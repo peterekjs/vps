@@ -1,0 +1,24 @@
+// /etc/apt/apt.conf.d/50unattended-upgrades — Automatic security update configuration
+// Managed by: scripts/setup/00-security-hardening.sh
+//
+// Full reference: man 8 unattended-upgrades
+
+Unattended-Upgrade::Allowed-Origins {
+    // Apply Debian security updates automatically
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+// Remove unused automatically-installed packages after an upgrade
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+
+// Automatically reboot when required (e.g. after a kernel update)
+// Change to "false" if you want manual control over reboots
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+
+// Write a log to syslog
+Unattended-Upgrade::SyslogEnable "true";

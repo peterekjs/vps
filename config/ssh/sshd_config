@@ -1,0 +1,62 @@
+# /etc/ssh/sshd_config — Hardened OpenSSH server configuration
+# Managed by: scripts/setup/00-security-hardening.sh
+#
+# Reference: https://infosec.mozilla.org/guidelines/openssh
+# Target OS:  Debian Bookworm / OpenSSH 9.x
+
+# ---------------------------------------------------------------------------
+# Network
+# ---------------------------------------------------------------------------
+Port 22
+AddressFamily inet
+ListenAddress 0.0.0.0
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+PermitRootLogin no
+PasswordAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KerberosAuthentication no
+GSSAPIAuthentication no
+UsePAM yes
+
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+
+# Limit the window during which clients must authenticate
+LoginGraceTime 30
+MaxAuthTries 3
+MaxSessions 5
+
+# ---------------------------------------------------------------------------
+# Cryptography — restrict to modern, well-vetted algorithms
+# ---------------------------------------------------------------------------
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
+HostKeyAlgorithms ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-256,rsa-sha2-512,rsa-sha2-256-cert-v01@openssh.com,rsa-sha2-512-cert-v01@openssh.com
+Ciphers chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com
+MACs hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,umac-128-etm@openssh.com
+
+# ---------------------------------------------------------------------------
+# Session hardening
+# ---------------------------------------------------------------------------
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding no
+PermitTunnel no
+
+# Disconnect idle sessions after 5 minutes of inactivity
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+LogLevel VERBOSE
+SyslogFacility AUTH
+
+# ---------------------------------------------------------------------------
+# Subsystems
+# ---------------------------------------------------------------------------
+Subsystem sftp /usr/lib/openssh/sftp-server
