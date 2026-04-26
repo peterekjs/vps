@@ -130,6 +130,37 @@ wg_next_peer_ip() {
 }
 
 # ---------------------------------------------------------------------------
+# Replace the PublicKey line of a single [Peer] block in the server config,
+# matched by its current value. Refuses to act unless the match is unique,
+# so a corrupt or hand-edited config can't silently rotate the wrong peer.
+# ---------------------------------------------------------------------------
+
+wg_replace_peer_pubkey() {
+  local cfg="$1" old_pub="$2" new_pub="$3"
+  local tmp matched=0
+  tmp="$(mktemp)"
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    if [[ "${line}" =~ ^[[:space:]]*PublicKey[[:space:]]*=[[:space:]]*(.+)$ ]]; then
+      local val="${BASH_REMATCH[1]}"
+      val="${val%"${val##*[![:space:]]}"}"
+      if [[ "${val}" == "${old_pub}" ]]; then
+        printf 'PublicKey = %s\n' "${new_pub}" >> "${tmp}"
+        matched=$((matched + 1))
+        continue
+      fi
+    fi
+    printf '%s\n' "${line}" >> "${tmp}"
+  done < "${cfg}"
+  if [[ "${matched}" -ne 1 ]]; then
+    rm -f "${tmp}"
+    log_error "Expected exactly 1 matching PublicKey in ${cfg}, found ${matched}"
+    return 1
+  fi
+  mv "${tmp}" "${cfg}"
+  chmod 600 "${cfg}"
+}
+
+# ---------------------------------------------------------------------------
 # Apply changes to a running interface without disconnecting active peers.
 # ---------------------------------------------------------------------------
 

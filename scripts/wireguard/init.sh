@@ -352,4 +352,8 @@ cat <<EOF
   Show a peer's client config:
     sudo bash scripts/wireguard/info.sh <peer-name> --config ${NAME}
 
+  Re-render a peer's client config from a template, or rotate its keypair:
+    sudo bash scripts/wireguard/edit-peer.sh --config ${NAME} --name <peer-name> --template <path>
+    sudo bash scripts/wireguard/edit-peer.sh --config ${NAME} --name <peer-name> --rotate-keys
+
 EOF
