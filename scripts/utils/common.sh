@@ -54,10 +54,16 @@ require_debian_bookworm() {
     log_error "Cannot detect OS — /etc/os-release not found."
     exit 1
   fi
+  # Read in a subshell so vars like NAME/VERSION/ID don't leak into callers.
+  local id codename pretty
   # shellcheck source=/dev/null
-  source /etc/os-release
-  if [[ "${ID:-}" != "debian" || "${VERSION_CODENAME:-}" != "bookworm" ]]; then
-    log_error "This script targets Debian Bookworm (12). Detected: ${PRETTY_NAME:-unknown}."
+  id=$(. /etc/os-release && printf '%s' "${ID-}")
+  # shellcheck source=/dev/null
+  codename=$(. /etc/os-release && printf '%s' "${VERSION_CODENAME-}")
+  # shellcheck source=/dev/null
+  pretty=$(. /etc/os-release && printf '%s' "${PRETTY_NAME-}")
+  if [[ "${id}" != "debian" || "${codename}" != "bookworm" ]]; then
+    log_error "This script targets Debian Bookworm (12). Detected: ${pretty:-unknown}."
     exit 1
   fi
 }
