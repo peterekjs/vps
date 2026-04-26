@@ -302,7 +302,7 @@ net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
 EOF
 chmod 644 "${FORWARD_CONF}"
-sysctl --system > /dev/null
+sysctl -p "${FORWARD_CONF}" > /dev/null
 log_success "IP forwarding enabled (${FORWARD_CONF})"
 
 # ---------------------------------------------------------------------------
