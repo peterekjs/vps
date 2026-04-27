@@ -10,7 +10,8 @@
 #   --address <CIDR>        Server VPN address, e.g. 10.9.0.1/24
 #   --port <port>           UDP listen port (default: 51820)
 #   --endpoint <host>       Public hostname/IP peers will dial (auto-detected if omitted)
-#   --dns <ip>              DNS server pushed to clients (optional)
+#   --dns <ip>              DNS server(s) pushed to clients
+#                           (default: 1.1.1.1, 8.8.8.8)
 #   --template <path>       Use a template config; freshly generate keys for the server
 #                           and every [Peer] in it. Comment line directly above each
 #                           [Peer] is used as the peer name (e.g. "# HOME").
@@ -125,7 +126,8 @@ if [[ -z "${ENDPOINT}" ]]; then
 fi
 
 if [[ -z "${DNS}" ]]; then
-  read -r -p "DNS for clients (blank to skip): " DNS
+  read -r -p "DNS for clients [${WG_DEFAULT_DNS}]: " input
+  DNS="${input:-${WG_DEFAULT_DNS}}"
 fi
 
 log_info "Name:     ${NAME}"
@@ -134,7 +136,7 @@ log_info "State:    ${STATE}"
 log_info "Address:  ${ADDRESS}"
 log_info "Port:     ${PORT}/udp"
 log_info "Endpoint: ${ENDPOINT}"
-log_info "DNS:      ${DNS:-<none>}"
+log_info "DNS:      ${DNS}"
 log_info "Template: ${TEMPLATE:-<none>}"
 
 # ---------------------------------------------------------------------------
@@ -175,7 +177,7 @@ SERVER_PUB="$(cat "$(wg_server_dir "${NAME}")/public.key")"
 echo "${ADDRESS}"  > "$(wg_server_dir "${NAME}")/address"
 echo "${PORT}"     > "$(wg_server_dir "${NAME}")/listen_port"
 echo "${ENDPOINT}" > "$(wg_server_dir "${NAME}")/endpoint"
-[[ -n "${DNS}" ]] && echo "${DNS}" > "$(wg_server_dir "${NAME}")/dns"
+echo "${DNS}" > "$(wg_server_dir "${NAME}")/dns"
 chmod 600 "$(wg_server_dir "${NAME}")"/*
 
 log_success "Server keypair stored under $(wg_server_dir "${NAME}")"

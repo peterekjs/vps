@@ -7,6 +7,7 @@
 set -euo pipefail
 
 WG_DIR="/etc/wireguard"
+WG_DEFAULT_DNS="1.1.1.1, 8.8.8.8"
 
 # ---------------------------------------------------------------------------
 # Path helpers
@@ -185,7 +186,7 @@ wg_render_client_config() {
   sdir="$(wg_server_dir "${name}")"
   pdir="$(wg_peer_dir "${name}" "${peer}")"
 
-  local server_pub endpoint listen_port peer_priv peer_addr client_routes dns_line=""
+  local server_pub endpoint listen_port peer_priv peer_addr client_routes dns_value
   server_pub="$(cat "${sdir}/public.key")"
   endpoint="$(cat "${sdir}/endpoint")"
   listen_port="$(cat "${sdir}/listen_port")"
@@ -197,15 +198,17 @@ wg_render_client_config() {
     client_routes="0.0.0.0/0, ::/0"
   fi
   if [[ -f "${sdir}/dns" ]]; then
-    dns_line="DNS = $(cat "${sdir}/dns")"
+    dns_value="$(cat "${sdir}/dns")"
+  else
+    dns_value="${WG_DEFAULT_DNS}"
   fi
 
   cat <<EOF
 [Interface]
 PrivateKey = ${peer_priv}
 Address = ${peer_addr}
-${dns_line:+${dns_line}
-}
+DNS = ${dns_value}
+
 [Peer]
 PublicKey = ${server_pub}
 Endpoint = ${endpoint}:${listen_port}

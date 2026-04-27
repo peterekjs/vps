@@ -94,6 +94,12 @@ SERVER_PUB="$(cat "${SDIR}/public.key")"
 SERVER_ENDPOINT="$(cat "${SDIR}/endpoint"):$(cat "${SDIR}/listen_port")"
 TARGET="${PDIR}/client.conf"
 
+if [[ -f "${SDIR}/dns" ]]; then
+  DEFAULT_DNS="$(cat "${SDIR}/dns")"
+else
+  DEFAULT_DNS="${WG_DEFAULT_DNS}"
+fi
+
 # ---------------------------------------------------------------------------
 # Optionally rotate the peer's keypair and patch the server config
 # ---------------------------------------------------------------------------
@@ -126,12 +132,20 @@ if [[ -n "${TEMPLATE}" ]]; then
   TMP_OUT="$(mktemp)"
   trap 'rm -f "${TMP_OUT}"' EXIT
 
+  template_has_dns=0
+  if grep -qE '^[[:space:]]*DNS[[:space:]]*=' "${TEMPLATE}"; then
+    template_has_dns=1
+  fi
+
   current_section=""
   saw_priv=0; saw_pub=0; saw_ep=0
   while IFS= read -r line || [[ -n "${line}" ]]; do
     if [[ "${line}" =~ ^[[:space:]]*\[Interface\][[:space:]]*$ ]]; then
       current_section="interface"
       printf '%s\n' "${line}" >> "${TMP_OUT}"
+      if [[ "${template_has_dns}" -eq 0 ]]; then
+        printf 'DNS = %s\n' "${DEFAULT_DNS}" >> "${TMP_OUT}"
+      fi
       continue
     fi
     if [[ "${line}" =~ ^[[:space:]]*\[Peer\][[:space:]]*$ ]]; then
