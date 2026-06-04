@@ -258,9 +258,11 @@ if [[ -n "${TEMPLATE}" ]]; then
     printf '%s\n' "${line}" >> "${CFG}"
   done < "${TEMPLATE}"
 else
-  WAN_IFACE="$(ip -4 route show default | awk 'NR==1{print $5}')"
+  WAN_IFACE="$(ip route get 1.1.1.1 | awk '{for (i=1;i<=NF;i++) if ($i=="dev") print $(i+1)}')"
   WAN_IFACE="${WAN_IFACE:-eth0}"
-  log_info "Detected WAN interface for MASQUERADE: ${WAN_IFACE}"
+  WAN_IP="$(ip route get 1.1.1.1 | awk '{for (i=1;i<=NF;i++) if ($i=="src") print $(i+1)}')"
+  log_info "Detected WAN interface: ${WAN_IFACE}"
+  log_info "Detected WAN source IP: ${WAN_IP}"
   cat > "${CFG}" <<EOF
 [Interface]
 Address = ${ADDRESS}
