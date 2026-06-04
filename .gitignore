@@ -12,3 +12,7 @@
 
 pkg/
 src/
+
+.claude/*.local.json
+
+.DS_Store
