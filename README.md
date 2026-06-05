@@ -153,7 +153,7 @@ Routes (edit `config/caddy/Caddyfile` to change them):
 | Hostname             | Backend                  | Notes |
 |----------------------|--------------------------|-------|
 | `home.peterek.net`   | `192.168.60.20:8123`     | Home Assistant (over WireGuard HOME peer) |
-| `agent.peterek.net`  | `10.9.0.4:8811`          | Agent webhooks (STUDIO peer) — backend validates auth |
+| `agent.peterek.net`  | `192.168.40.10:8811`     | Agent webhooks (home-LAN host via HOME peer) — backend validates auth |
 
 State layout on the VPS:
 

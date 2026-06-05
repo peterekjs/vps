@@ -13,6 +13,6 @@ Canonical terms for this VPS infrastructure repo. Definitions only; no implement
 
 - **VPS** — the Debian Bookworm host. WireGuard server at `10.9.0.1/24`, public endpoint `37.205.10.203:51830`.
 - **Reverse proxy** — the edge HTTP(S) router on the VPS that terminates TLS and forwards to backends. Currently Traefik (unmanaged, not in repo).
-- **STUDIO** — the WireGuard peer at `10.9.0.4`; the user's "main computer". Backend for `agent.peterek.net`.
-- **HOME** — the WireGuard peer at `10.9.0.2` that advertises the home LAN subnets (incl. `192.168.60.0/24`), making Home Assistant reachable from the VPS.
-- **Agent endpoint** — `agent.peterek.net`; public hostname that proxies (currently webhooks) to `10.9.0.4:8811` over WireGuard.
+- **STUDIO** — the WireGuard peer at `10.9.0.4`; the user's "main computer".
+- **HOME** — the WireGuard peer at `10.9.0.2` that advertises the home LAN subnets (incl. `192.168.40.0/24` and `192.168.60.0/24`), making both Home Assistant and the agent backend reachable from the VPS.
+- **Agent endpoint** — `agent.peterek.net`; public hostname that proxies (currently webhooks) to `192.168.40.10:8811`, reached over WireGuard via the HOME peer's advertised `192.168.40.0/24`.

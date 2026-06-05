@@ -18,9 +18,10 @@ home.peterek.net {
 	reverse_proxy http://192.168.60.20:8123
 }
 
-# Agent webhooks — forwarded into the WireGuard mesh to the STUDIO peer.
-# No proxy-level auth: the backend on 10.9.0.4:8811 MUST validate every webhook
-# (signature/secret). See ADR 0001.
+# Agent webhooks — forwarded over WireGuard to a home-LAN host (192.168.40.0/24
+# is advertised by the HOME peer, same routing path as Home Assistant).
+# No proxy-level auth: the backend MUST validate every webhook (signature/secret).
+# See ADR 0001.
 agent.peterek.net {
 	reverse_proxy http://192.168.40.10:8811
 }
