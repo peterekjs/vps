@@ -28,8 +28,8 @@ Numbers under `scripts/setup/` are grouped by category, and within each category
 
 - `0x` — initial setup / hardening (`00` = baseline hardening)
 - `1x` — accounts / users (`10` reserved for shared base)
-- `2x` — communication / networking (`20` reserved; the WireGuard scripts under `scripts/wireguard/` predate this convention)
-- `3x` — application services (`30` reserved for a shared service-tier bootstrap such as a future `30-docker.sh`; `31-n8n.sh` is the first individual service)
+- `2x` — communication / networking (`20` reserved; `21-caddy.sh` is the edge reverse proxy; the WireGuard scripts under `scripts/wireguard/` predate this convention)
+- `3x` — application services (`30` reserved for a shared service-tier bootstrap such as a future `30-docker.sh`; no individual service scripts currently)
 
 When adding a new setup script: pick the lowest free number ≥ `N1` in the matching category range. Do not take an `N0` slot unless the script genuinely installs shared infrastructure used by every other script in the range — when a second consumer of that infrastructure appears, extract the shared logic into the `N0` script then. Otherwise follow the same pattern as the existing scripts: number prefix, source `common.sh`, use the helpers rather than reinventing logging/backup/install logic.
 
@@ -51,6 +51,9 @@ shellcheck scripts/setup/*.sh scripts/utils/*.sh
 # Run the hardening script on a fresh VPS (as root, on Debian Bookworm only)
 sudo bash scripts/setup/00-security-hardening.sh
 sudo bash scripts/setup/00-security-hardening.sh --ssh-port 2222
+
+# Deploy the Caddy edge reverse proxy (parks any running Traefik to free 80/443)
+sudo bash scripts/setup/21-caddy.sh
 ```
 
 There is no CI, no test framework, and no lint configured in-repo — `shellcheck` is the only validation. Do not invent build/test commands.
@@ -58,3 +61,5 @@ There is no CI, no test framework, and no lint configured in-repo — `shellchec
 ## Critical safety note
 
 `00-security-hardening.sh` **disables SSH password authentication**. Any change to SSH config or firewall rules in this repo can lock the operator out of their VPS. When modifying `config/ssh/sshd_config`, `config/fail2ban/jail.local`, or the UFW section of the hardening script, preserve the existing pattern: validate config syntax before restart, allow the SSH port in UFW *before* enabling the firewall, and keep the backup-and-rollback flow intact.
+
+`21-caddy.sh` is the public TLS edge. `agent.peterek.net` forwards unauthenticated traffic into the WireGuard mesh (`10.9.0.4:8811`) — the backend is solely responsible for validating webhooks. Caddy uses Let's Encrypt **HTTP-01** (no Cloudflare), so ports 80 + 443 must stay open and the hostnames must resolve grey-cloud (DNS-only) to the VPS. Background and rejected alternatives: [docs/adr/0001-native-caddy-http01-reverse-proxy.md](docs/adr/0001-native-caddy-http01-reverse-proxy.md).

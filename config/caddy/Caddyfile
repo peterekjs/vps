@@ -1,0 +1,26 @@
+# Caddyfile — edge reverse proxy for the VPS
+#
+# Deployed to /etc/caddy/Caddyfile by scripts/setup/21-caddy.sh.
+# Caddy obtains Let's Encrypt certificates automatically via the HTTP-01
+# challenge (ports 80 + 443 must be reachable from the internet) and redirects
+# HTTP → HTTPS on its own. No Cloudflare API token / DNS-01 involved.
+#
+# DNS records for these hostnames must be grey-cloud (DNS-only) A records
+# pointing at the VPS public IP — see docs/adr/0001-native-caddy-http01-reverse-proxy.md.
+
+{
+	# ACME account contact (expiry / problem notifications from Let's Encrypt).
+	email jiri@peterek.net
+}
+
+# Home Assistant — reached over WireGuard via the HOME peer (192.168.60.0/24).
+home.peterek.net {
+	reverse_proxy http://192.168.60.20:8123
+}
+
+# Agent webhooks — forwarded into the WireGuard mesh to the STUDIO peer.
+# No proxy-level auth: the backend on 10.9.0.4:8811 MUST validate every webhook
+# (signature/secret). See ADR 0001.
+agent.peterek.net {
+	reverse_proxy http://192.168.40.10:8811
+}

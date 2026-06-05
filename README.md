@@ -5,17 +5,16 @@ Tools & configurations for my personal VPS (Debian Bookworm).
 
 ```
 config/                        # Drop-in configuration files deployed by scripts
+  caddy/Caddyfile              # Edge reverse proxy routes (TLS via Let's Encrypt)
   fail2ban/jail.local          # Fail2ban jail overrides
-  n8n/docker-compose.yml       # Compose template for the n8n service
   ssh/sshd_config              # Hardened OpenSSH server configuration
   sysctl/hardening.conf        # Kernel parameter hardening (sysctl)
-  systemd/n8n.service          # Systemd unit that drives the n8n compose stack
   unattended-upgrades/         # Automatic security update configuration
     50unattended-upgrades
 scripts/
   setup/
     00-security-hardening.sh   # Initial security hardening (run once on a fresh VPS)
-    31-n8n.sh                  # Self-hosted n8n via Docker Compose
+    21-caddy.sh                # Caddy edge reverse proxy (HTTP-01 TLS)
   wireguard/
     init.sh                    # Initialize this VPS as a WireGuard server
     add-peer.sh                # Add a peer (generates keys, prints client config)
@@ -39,7 +38,7 @@ the leading `N0` slot is reserved for category-foundational / shared work.
 | `2x`  | Communication / networking               | (reserved for shared base)       |
 | `3x`  | Application services                     | (reserved, e.g. future Docker base) |
 
-Individual scripts in a category therefore start at `N1` (e.g. `31-n8n.sh`).
+Individual scripts in a category therefore start at `N1` (e.g. `21-caddy.sh`).
 The WireGuard scripts under `scripts/wireguard/` predate this convention and
 remain in place for now.
 
@@ -120,55 +119,55 @@ State layout on the VPS:
   peers/<peer>/{private.key,public.key,address,client.conf}
 ```
 
-### 3. n8n
+### 3. Caddy (edge reverse proxy)
 
-Deploys [n8n](https://n8n.io) as a Docker Compose stack managed by systemd.
-Installs Docker Engine + Compose v2 from Docker's official Debian repo if not
-already present, prompts for the basic-auth username, password and bind host,
-and starts the service.
+Installs [Caddy](https://caddyserver.com) natively from its official apt repo
+and manages it with systemd. Caddy terminates TLS for the public hostnames and
+forwards into the WireGuard mesh. Certificates come from Let's Encrypt via the
+**HTTP-01** challenge — no Cloudflare API token / DNS-01, so ports 80 + 443 must
+be reachable and the hostnames must resolve grey-cloud (DNS-only) to the VPS.
 
 ```bash
-sudo bash scripts/setup/31-n8n.sh
+sudo bash scripts/setup/21-caddy.sh
 ```
 
-Flags (all optional — defaults are interactive prompts):
+Flag (optional):
 
-| Flag                | Purpose                                                           |
-|---------------------|-------------------------------------------------------------------|
-| `--user <name>`     | Basic-auth username (default prompt: `admin`)                     |
-| `--host <addr>`     | Bind host (default prompt: `0.0.0.0`)                             |
-| `--password-stdin`  | Read the basic-auth password from stdin (no confirmation prompt)  |
-| `--ufw-allow`       | Open `5678/tcp` in UFW (default: leave closed)                    |
+| Flag             | Purpose                                                              |
+|------------------|---------------------------------------------------------------------|
+| `--keep-traefik` | Do not stop a running Traefik container (default: park it so Caddy can bind 80/443) |
 
 #### What it does
 
 | Step | Action |
 |------|--------|
-| Docker | Adds Docker's apt repo, installs `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin` |
-| Credentials | Prompts for basic-auth username / password / bind host (or takes them from flags / stdin) |
-| Compose | Deploys `config/n8n/docker-compose.yml` to `/opt/n8n/docker-compose.yml` and writes `/opt/n8n/.env` (mode 600) |
-| Validate | Runs `docker compose config -q`; restores backups and aborts on failure |
-| Systemd | Deploys `config/systemd/n8n.service` to `/etc/systemd/system/`, reloads systemd, enables & starts `n8n.service` |
-| Firewall | Opt-in via `--ufw-allow`; otherwise `5678/tcp` stays closed (access is expected via WireGuard or a future reverse proxy) |
+| Install | Adds Caddy's apt repo and installs the `caddy` package |
+| Config | Deploys `config/caddy/Caddyfile` to `/etc/caddy/Caddyfile` (with backup) |
+| Validate | Runs `caddy validate`; restores the backup and aborts on failure |
+| Firewall | Opens `80/tcp` + `443/tcp` in UFW (required for HTTP-01 + HTTPS) |
+| Cutover | Stops (parks, does not remove) any running Traefik container to free 80/443 |
+| Systemd | Enables & (re)starts `caddy`, which issues certs via HTTP-01 on first request |
+
+Routes (edit `config/caddy/Caddyfile` to change them):
+
+| Hostname             | Backend                  | Notes |
+|----------------------|--------------------------|-------|
+| `home.peterek.net`   | `192.168.60.20:8123`     | Home Assistant (over WireGuard HOME peer) |
+| `agent.peterek.net`  | `10.9.0.4:8811`          | Agent webhooks (STUDIO peer) — backend validates auth |
 
 State layout on the VPS:
 
 ```
-/opt/n8n/
-  docker-compose.yml      # copied from config/n8n/docker-compose.yml
-  .env                    # generated (mode 600 — contains basic-auth password)
-  n8n_data/               # bind mount, created by the n8n container on first run
-/etc/systemd/system/n8n.service
+/etc/caddy/Caddyfile                          # copied from config/caddy/Caddyfile
+/var/lib/caddy/.local/share/caddy/            # certificates + ACME state
 ```
 
-Re-running the script is safe: if `/opt/n8n/.env` already exists you'll be
-asked whether to overwrite credentials. Decline to keep credentials and only
-refresh Docker, the compose file, and the systemd unit.
+Re-running the script is safe: it re-deploys and re-validates the Caddyfile and
+reloads the service. Verify with `journalctl -u caddy -f` and
+`curl -I https://agent.peterek.net`. To roll back during the verification
+window: `systemctl stop caddy && docker start <traefik-container>`.
 
-Reach the UI at `http://<host>:5678/` (basic auth required). To upgrade to
-the latest n8n image:
-
-```bash
-sudo docker compose -f /opt/n8n/docker-compose.yml pull
-sudo docker compose -f /opt/n8n/docker-compose.yml up -d
-```
+> Home Assistant must trust the proxy: add the VPS WireGuard address to
+> `http.trusted_proxies` and set `use_x_forwarded_for: true` in its
+> `configuration.yaml`, or logins will fail. (Home Assistant side — not managed
+> by this repo.)
