@@ -131,17 +131,23 @@ apt_install() {
 # Systemd helpers
 # ---------------------------------------------------------------------------
 
-# Enable and start (or restart) a systemd service
+# Enable and start (or restart) a systemd service.
+# Verifies the service is actually active afterward — a service can exit
+# non-zero from its post-start check (e.g. crash-looping) while `systemctl
+# start`/`restart` itself still returns 0, so that alone can't be trusted.
 service_enable_restart() {
   local svc="$1"
   systemctl enable "${svc}"
   if systemctl is-active --quiet "${svc}"; then
     systemctl restart "${svc}"
-    log_success "Restarted ${svc}"
   else
     systemctl start "${svc}"
-    log_success "Started ${svc}"
   fi
+  if ! systemctl is-active --quiet "${svc}"; then
+    log_error "${svc} did not stay active after start — check: systemctl status ${svc}; journalctl -u ${svc}"
+    return 1
+  fi
+  log_success "${svc} is active"
 }
 
 # ---------------------------------------------------------------------------

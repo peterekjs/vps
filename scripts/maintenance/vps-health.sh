@@ -30,7 +30,7 @@ require_root
 load_conf
 
 # --- 1. Services -----------------------------------------------------------
-for svc in ssh caddy fail2ban auditd; do
+for svc in ssh caddy fail2ban; do
   if systemctl is-active --quiet "${svc}"; then
     check_ok "service ${svc} active"
   else
@@ -38,8 +38,32 @@ for svc in ssh caddy fail2ban auditd; do
   fi
 done
 
-mapfile -t wg_units < <(systemctl list-unit-files 'wg-quick@*.service' \
-  --state=enabled --no-legend 2>/dev/null | awk '{print $1}')
+# auditd needs CAP_AUDIT_CONTROL, which containers (LXC, OpenVZ) never get
+# delegated from the host — 00-security-hardening.sh skips enabling it there,
+# so this check must agree instead of permanently reporting a false CRIT.
+container_type="$(systemd-detect-virt --container 2>/dev/null || echo none)"
+if [[ "${container_type}" == "none" ]]; then
+  if systemctl is-active --quiet auditd; then
+    check_ok "service auditd active"
+  else
+    check_crit "service auditd NOT active"
+  fi
+else
+  check_ok "service auditd skipped (${container_type} container — unsupported here)"
+fi
+
+# `systemctl list-unit-files --state=enabled` does not match enabled
+# *instances* of a template unit like wg-quick@.service — systemd reports
+# the template itself as "indirect", not "enabled", so that filter always
+# returns zero rows regardless of real state. Derive expected instances from
+# the configs on disk instead and check each one's enabled state directly.
+mapfile -t wg_confs < <(find /etc/wireguard -maxdepth 1 -name '*.conf' -printf '%f\n' 2>/dev/null | sed 's/\.conf$//')
+wg_units=()
+for c in "${wg_confs[@]}"; do
+  if systemctl is-enabled --quiet "wg-quick@${c}" 2>/dev/null; then
+    wg_units+=("wg-quick@${c}.service")
+  fi
+done
 if [[ ${#wg_units[@]} -eq 0 ]]; then
   check_warn "no wg-quick@ units enabled"
 else
@@ -105,7 +129,11 @@ fi
 
 # --- 4. WireGuard critical peers ---------------------------------------------
 for peer in ${WG_CRITICAL_PEERS}; do
-  keyfile=$(find /etc/wireguard -path "*/peers/${peer}/public.key" 2>/dev/null | head -1)
+  # Exclude *.d.bak.<timestamp> snapshots (left behind by init.sh re-runs and
+  # key rotations) — they match the same */peers/<peer>/public.key glob as
+  # the live state dir, and picking one at random via `head -1` compares
+  # against a rotated-out key instead of the one actually on the interface.
+  keyfile=$(find /etc/wireguard -path "*/peers/${peer}/public.key" -not -path '*.bak.*' 2>/dev/null | head -1)
   if [[ -z "${keyfile}" ]]; then
     check_warn "wg peer ${peer}: no public.key found under /etc/wireguard/*/peers/"
     continue

@@ -14,7 +14,7 @@
 #   7.  Enables automatic security updates
 #   8.  Applies kernel parameter hardening (config/sysctl/hardening.conf)
 #   9.  Hardens user-account settings (password policy, umask)
-#   10. Enables & configures auditd
+#   10. Enables & configures auditd (skipped inside containers — see below)
 #
 # The script is idempotent — safe to run more than once.
 
@@ -245,13 +245,28 @@ log_success "Login defaults updated (umask 027, 90-day max password age)"
 # ---------------------------------------------------------------------------
 section "9. Audit daemon (auditd)"
 
-service_enable_restart auditd
-log_success "auditd enabled and running"
+# auditd needs CAP_AUDIT_CONTROL to set the kernel audit "enabled" state at
+# startup. Containers (LXC, OpenVZ) never get that capability delegated from
+# the host, so auditd crash-loops there no matter how it's configured — this
+# is a permanent host/guest boundary, not something fixable from the guest.
+AUDITD_SKIPPED=0
+if [[ "$(systemd-detect-virt --container 2>/dev/null || true)" != "none" ]]; then
+  log_warn "Running inside a container ($(systemd-detect-virt --container 2>/dev/null || echo unknown)) — auditd cannot control kernel audit state here. Skipping."
+  AUDITD_SKIPPED=1
+else
+  service_enable_restart auditd
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 section "Security hardening complete"
+
+if [[ "${AUDITD_SKIPPED}" -eq 1 ]]; then
+  AUDITD_LINE="⚠  auditd skipped — not supported inside this container"
+else
+  AUDITD_LINE="✔  auditd enabled"
+fi
 
 cat <<EOF
 
@@ -265,7 +280,7 @@ cat <<EOF
   ✔  Kernel parameters hardened (sysctl)
   ✔  Password policy enforced via pam_pwquality (min 12 chars, complexity)
   ✔  90-day password rotation, 027 umask for new users
-  ✔  auditd enabled
+  ${AUDITD_LINE}
 
   ⚠  IMPORTANT — before logging out:
      • Make sure your SSH public key is in ~/.ssh/authorized_keys

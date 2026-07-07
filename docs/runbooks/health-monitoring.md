@@ -25,7 +25,8 @@ Exit codes: `0` = all OK, `1` = warnings, `2` = at least one critical finding.
 
 | Check | Critical when | Tuned by |
 |---|---|---|
-| Services (`ssh`, `caddy`, `fail2ban`, `auditd`, `wg-quick@*`) | unit not active | — |
+| Services (`ssh`, `caddy`, `fail2ban`, `wg-quick@*`) | unit not active | — |
+| Audit daemon (`auditd`) | unit not active — unless running in a container (LXC/OpenVZ), where it's expected to be skipped | — |
 | Root filesystem usage | ≥ `DISK_CRIT_PCT` (warn ≥ `DISK_WARN_PCT`) | `DISK_WARN_PCT`, `DISK_CRIT_PCT` |
 | Available memory | — (warn < `MEM_AVAILABLE_MIN_MB` MB) | `MEM_AVAILABLE_MIN_MB` |
 | 15-min load | — (warn > 2× cores) | — |

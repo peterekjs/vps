@@ -88,7 +88,7 @@ sudo bash scripts/setup/00-security-hardening.sh --ssh-port 2222
 | Automatic updates | Enables `unattended-upgrades` for security packages |
 | Kernel hardening | Deploys `config/sysctl/hardening.conf` — enables SYN cookies, disables ICMP redirects, ASLR max, etc. |
 | Password policy | Enforces 12-char minimum, complexity, 90-day rotation via `pam_pwquality` |
-| Audit logging | Enables and starts `auditd` |
+| Audit logging | Enables and starts `auditd` (skipped inside containers — LXC/OpenVZ never get `CAP_AUDIT_CONTROL` from the host, so it can't run there) |
 
 > ⚠ **Before logging out**: verify that your SSH public key is present in
 > `~/.ssh/authorized_keys`. Password authentication is **disabled** by the
