@@ -1,0 +1,11 @@
+# Deployed to /etc/systemd/system/ by scripts/setup/01-maintenance.sh
+[Unit]
+Description=VPS health check (vps-health)
+Documentation=https://github.com/peterekjs/vps/blob/main/docs/runbooks/health-monitoring.md
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vps-health --notify --quiet
+# vps-health exits 1 on warnings / 2 on critical; the notification is the
+# alerting channel, so don't mark the unit failed for warnings.
+SuccessExitStatus=1
