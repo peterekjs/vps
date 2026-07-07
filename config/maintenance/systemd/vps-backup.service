@@ -1,0 +1,8 @@
+# Deployed to /etc/systemd/system/ by scripts/setup/01-maintenance.sh
+[Unit]
+Description=Encrypted VPS state snapshot (vps-backup)
+Documentation=https://github.com/peterekjs/vps/blob/main/docs/runbooks/backup-and-restore.md
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vps-backup --notify

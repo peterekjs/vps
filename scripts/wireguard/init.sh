@@ -54,7 +54,7 @@ done
 # ---------------------------------------------------------------------------
 section "0. Prerequisites"
 require_root
-require_debian_bookworm
+require_debian_supported
 log_success "Running as root on Debian Bookworm"
 
 # ---------------------------------------------------------------------------

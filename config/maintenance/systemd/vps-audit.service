@@ -1,0 +1,9 @@
+# Deployed to /etc/systemd/system/ by scripts/setup/01-maintenance.sh
+[Unit]
+Description=Hardening drift audit (vps-audit)
+Documentation=https://github.com/peterekjs/vps/blob/main/docs/runbooks/drift-audit.md
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/vps-audit --notify --quiet
+SuccessExitStatus=1

@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_root
-require_debian_bookworm
+require_debian_supported
 wg_require_tools
 
 NAME="$(wg_resolve_instance "${NAME}")"
