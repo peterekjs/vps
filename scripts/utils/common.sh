@@ -48,8 +48,12 @@ require_root() {
   fi
 }
 
-# Abort if the OS is not Debian Bookworm (12)
-require_debian_bookworm() {
+# Debian releases these scripts are validated against. After completing the
+# debian-release-upgrade runbook on a new release, add its codename here.
+SUPPORTED_CODENAMES=(bookworm)
+
+# Abort unless the OS is Debian with a codename in SUPPORTED_CODENAMES
+require_debian_supported() {
   if [[ ! -f /etc/os-release ]]; then
     log_error "Cannot detect OS — /etc/os-release not found."
     exit 1
@@ -62,10 +66,14 @@ require_debian_bookworm() {
   codename=$(. /etc/os-release && printf '%s' "${VERSION_CODENAME-}")
   # shellcheck source=/dev/null
   pretty=$(. /etc/os-release && printf '%s' "${PRETTY_NAME-}")
-  if [[ "${id}" != "debian" || "${codename}" != "bookworm" ]]; then
-    log_error "This script targets Debian Bookworm (12). Detected: ${pretty:-unknown}."
-    exit 1
-  fi
+  local supported
+  for supported in "${SUPPORTED_CODENAMES[@]}"; do
+    if [[ "${id}" == "debian" && "${codename}" == "${supported}" ]]; then
+      return 0
+    fi
+  done
+  log_error "This script targets Debian (${SUPPORTED_CODENAMES[*]}). Detected: ${pretty:-unknown}."
+  exit 1
 }
 
 # ---------------------------------------------------------------------------

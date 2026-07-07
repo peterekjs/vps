@@ -78,7 +78,7 @@ F2B_JAIL_SRC="${REPO_ROOT}/config/fail2ban/jail.d/caddy-llm.local"
 # ---------------------------------------------------------------------------
 section "0. Prerequisites"
 require_root
-require_debian_bookworm
+require_debian_supported
 log_success "Running as root on Debian Bookworm"
 
 if [[ ! -f "${CADDYFILE_SRC}" ]]; then
