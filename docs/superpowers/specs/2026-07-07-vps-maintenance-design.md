@@ -60,7 +60,9 @@ One-shot health report:
   Let's Encrypt renews at 30, so <14 means renewal is broken.
 - WireGuard handshake age for critical peers (`WG_CRITICAL_PEERS` in conf, e.g. HOME)
 - pending apt updates count; `/var/run/reboot-required` flag
-- fail2ban current ban count (informational)
+- fail2ban per-jail status + ban counts for all configured jails
+  (currently `sshd` and `caddy-llm`; discovered via `fail2ban-client status`,
+  not hard-coded)
 - age of newest snapshot in the backup dir (warn above threshold)
 
 `--notify` (used by the timer) pushes issues to Home Assistant; quiet on success.
@@ -71,6 +73,8 @@ state; repo = configuration):
 - `/etc/wireguard/` (server + peer keys/configs)
 - `/etc/ssh/ssh_host_*` (server identity — peers' known_hosts stay valid after rebuild)
 - `/var/lib/caddy/` (certs + ACME account state — avoids rate limits/downtime on rebuild)
+- `/etc/caddy/caddy.env` (per-client LLM API keys — generated once by
+  `21-caddy.sh`, never in git; losing it means re-issuing every client key)
 - `/etc/vps-maintenance.conf`
 - `/root/.ssh/authorized_keys` (template default; the conf documents adding
   per-user paths — the repo defines no admin user, so this stays per-machine)
@@ -89,8 +93,16 @@ what would be overwritten; real runs back up current files first
 
 ### vps-audit
 Hardening drift detection:
-- diff deployed configs vs repo clone (`REPO_DIR` from conf): sshd_config,
-  jail.local, sysctl hardening.conf, Caddyfile, 50unattended-upgrades
+- diff deployed configs vs repo clone (`REPO_DIR` from conf), driven by a
+  single mapping table in the script (repo path → system path) so new
+  services extend it in one place. Initial set: sshd_config, fail2ban
+  jail.local + filter.d/caddy-llm.conf + jail.d/caddy-llm.local, sysctl
+  hardening.conf, Caddyfile, 50unattended-upgrades, the caddy systemd
+  drop-in (caddy.service.d/env.conf)
+- `/etc/caddy/caddy.env`: exists, mode 600 root:root, contains at least one
+  `LLM_KEY_*` entry (presence/permissions only — content is secret and has
+  no repo counterpart). Guards the fail-closed edge-auth design of ADR 0002.
+- fail2ban: both jails (`sshd`, `caddy-llm`) enabled and running
 - `sshd -T` effective values: `permitrootlogin no`, `passwordauthentication no`, port
 - UFW: active + expected rule set, derived from live sources of truth —
   SSH port from `sshd -T`, 80/443 because Caddy is deployed, WG listen port(s)
@@ -161,12 +173,12 @@ systemd timers (journald logging, `Persistent=true` to catch missed runs):
 |---|---|
 | README.md | Index (symptom → runbook); the maintenance model on one page |
 | health-monitoring.md | Reading vps-health, meaning of each check, tuning thresholds |
-| backup-and-restore.md | Snapshot flow, pulling to home, restore (single file & full), age key handling |
+| backup-and-restore.md | Snapshot flow, pulling to home, restore (single file & full), age key handling, LLM key file (`caddy.env`) |
 | rebuild-from-scratch.md | Fresh VPS → hardened, restored, identical server (end-to-end DR) |
 | drift-audit.md | Running/reading vps-audit; resolving drift (adopt into repo vs revert) |
 | updates-and-patching.md | Monthly vps-update routine, reboots, what unattended-upgrades already covers |
 | debian-release-upgrade.md | Bookworm → Trixie: pre-checks, upgrade, re-validate hardening, update OS guard |
-| add-a-service.md | New proxied service / WG peer: files to touch, numbering, verification |
+| add-a-service.md | New proxied service / WG peer: files to touch, numbering, verification; edge-auth pattern (ADR 0002) when the backend has no auth of its own |
 | provider-or-ip-migration.md | New VPS/IP: DNS cutover, WG endpoint updates on peers, cert re-issuance |
 | lockout-recovery.md | SSH lockout paths: provider console, fail2ban self-ban, key loss |
 
