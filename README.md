@@ -142,11 +142,13 @@ Flag (optional):
 | Step | Action |
 |------|--------|
 | Install | Adds Caddy's apt repo and installs the `caddy` package |
+| LLM keys | Generates `/etc/caddy/caddy.env` (per-client API keys, created once), installs the systemd drop-in that loads it, prepares `/var/log/caddy` |
 | Config | Deploys `config/caddy/Caddyfile` to `/etc/caddy/Caddyfile` (with backup) |
 | Validate | Runs `caddy validate`; restores the backup and aborts on failure |
 | Firewall | Opens `80/tcp` + `443/tcp` in UFW (required for HTTP-01 + HTTPS) |
 | Cutover | Stops (parks, does not remove) any running Traefik container to free 80/443 |
 | Systemd | Enables & (re)starts `caddy`, which issues certs via HTTP-01 on first request |
+| fail2ban | Deploys the `caddy-llm` filter + jail (bans repeated unauthenticated probes of the LLM endpoint) |
 
 Routes (edit `config/caddy/Caddyfile` to change them):
 
@@ -154,13 +156,25 @@ Routes (edit `config/caddy/Caddyfile` to change them):
 |----------------------|--------------------------|-------|
 | `home.peterek.net`   | `192.168.60.20:8123`     | Home Assistant (over WireGuard HOME peer) |
 | `agent.peterek.net`  | `192.168.40.10:8811`     | Agent webhooks (home-LAN host via HOME peer) — backend validates auth |
+| `llm.peterek.net`    | `192.168.40.10:11434`    | Ollama on the Mac Studio — **auth at the edge**: per-client bearer keys, inference-only path allowlist, pinned CORS origins ([ADR 0002](docs/adr/0002-authenticated-llm-endpoint.md)) |
 
 State layout on the VPS:
 
 ```
 /etc/caddy/Caddyfile                          # copied from config/caddy/Caddyfile
+/etc/caddy/caddy.env                          # LLM API keys — root-only, never in git
+/etc/systemd/system/caddy.service.d/env.conf  # loads caddy.env into Caddy's environment
+/var/log/caddy/llm-access.log                 # LLM endpoint access log (fail2ban watches it)
 /var/lib/caddy/.local/share/caddy/            # certificates + ACME state
 ```
+
+LLM key management: one `LLM_KEY_<CLIENT>=<openssl rand -hex 32>` line per
+client in `/etc/caddy/caddy.env`, plus a matching `header Authorization` line
+in the Caddyfile's `@no_key` matcher. Apply with `systemctl reload caddy`
+(systemd re-reads the env file on reload; a bare `caddy reload` does not).
+Browser clients additionally need their origin pinned in the `@cors_origin`
+matcher. On the Mac Studio: enable "Expose Ollama to the network" in
+Ollama.app, allow it through the macOS firewall, and prevent sleep.
 
 Re-running the script is safe: it re-deploys and re-validates the Caddyfile and
 reloads the service. Verify with `journalctl -u caddy -f` and

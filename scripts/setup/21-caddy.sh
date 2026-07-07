@@ -12,19 +12,26 @@
 #
 # What this script does:
 #   1. Installs Caddy from its official apt repository
-#   2. Deploys config/caddy/Caddyfile to /etc/caddy/Caddyfile (with backup)
-#   3. Validates the Caddyfile, restoring the backup on failure
-#   4. Opens 80/tcp + 443/tcp in UFW (required for HTTP-01 + HTTPS)
-#   5. Stops (parks) any running Traefik container to free ports 80/443
-#   6. Enables & (re)starts the caddy service, which issues certs via HTTP-01
+#   2. Bootstraps the LLM endpoint prerequisites: generates /etc/caddy/caddy.env
+#      (per-client API keys — created once, never overwritten), installs the
+#      systemd drop-in that loads it, and prepares /var/log/caddy
+#   3. Deploys config/caddy/Caddyfile to /etc/caddy/Caddyfile (with backup)
+#   4. Validates the Caddyfile, restoring the backup on failure
+#   5. Opens 80/tcp + 443/tcp in UFW (required for HTTP-01 + HTTPS)
+#   6. Stops (parks) any running Traefik container to free ports 80/443
+#   7. Enables & (re)starts the caddy service, which issues certs via HTTP-01
+#   8. Deploys the caddy-llm fail2ban filter + jail (skipped if fail2ban is
+#      not installed — run 00-security-hardening.sh first)
 #
 # Caddy obtains Let's Encrypt certificates automatically via the HTTP-01
 # challenge — no Cloudflare API token / DNS-01. The hostnames in the Caddyfile
 # must already resolve (grey-cloud / DNS-only) to this VPS.
-# See docs/adr/0001-native-caddy-http01-reverse-proxy.md.
+# See docs/adr/0001-native-caddy-http01-reverse-proxy.md and
+# docs/adr/0002-authenticated-llm-endpoint.md (llm.peterek.net edge auth).
 #
 # Safe to re-run: package install, repo setup and the UFW rules are idempotent,
-# and the Caddyfile is re-deployed and re-validated each run.
+# the Caddyfile is re-deployed and re-validated each run, and existing API keys
+# in /etc/caddy/caddy.env are never touched.
 
 set -euo pipefail
 
@@ -56,6 +63,15 @@ done
 
 CADDYFILE_DEST="/etc/caddy/Caddyfile"
 CADDYFILE_SRC="${REPO_ROOT}/config/caddy/Caddyfile"
+CADDY_ENV_DEST="/etc/caddy/caddy.env"
+CADDY_DROPIN_DEST="/etc/systemd/system/caddy.service.d/env.conf"
+CADDY_DROPIN_SRC="${REPO_ROOT}/config/systemd/caddy.service.d/env.conf"
+CADDY_LOG_DIR="/var/log/caddy"
+LLM_ACCESS_LOG="${CADDY_LOG_DIR}/llm-access.log"
+F2B_FILTER_DEST="/etc/fail2ban/filter.d/caddy-llm.conf"
+F2B_FILTER_SRC="${REPO_ROOT}/config/fail2ban/filter.d/caddy-llm.conf"
+F2B_JAIL_DEST="/etc/fail2ban/jail.d/caddy-llm.local"
+F2B_JAIL_SRC="${REPO_ROOT}/config/fail2ban/jail.d/caddy-llm.local"
 
 # ---------------------------------------------------------------------------
 # 0. Prerequisites
@@ -75,7 +91,7 @@ fi
 # ---------------------------------------------------------------------------
 section "1. Install Caddy"
 
-apt_install debian-keyring debian-archive-keyring apt-transport-https curl gnupg ca-certificates
+apt_install debian-keyring debian-archive-keyring apt-transport-https curl gnupg ca-certificates openssl
 
 CADDY_KEYRING="/usr/share/keyrings/caddy-stable-archive-keyring.gpg"
 if [[ ! -f "${CADDY_KEYRING}" ]]; then
@@ -101,15 +117,74 @@ fi
 apt_install caddy
 
 # ---------------------------------------------------------------------------
-# 2. Deploy + validate Caddyfile
+# 2. LLM endpoint prerequisites (API keys, systemd drop-in, log dir)
 # ---------------------------------------------------------------------------
-section "2. Deploy Caddyfile"
+section "2. LLM endpoint prerequisites"
+
+# API key env file — created once with a generated admin key, never overwritten
+# on re-runs (rotation and per-client onboarding are manual edits; see the
+# comments written into the file itself, and ADR 0002).
+if [[ ! -f "${CADDY_ENV_DEST}" ]]; then
+  admin_key="$(openssl rand -hex 32)"
+  (
+    umask 077
+    cat > "${CADDY_ENV_DEST}" <<'EOF'
+# /etc/caddy/caddy.env — secrets for the {$VAR} placeholders in the Caddyfile.
+# Loaded by systemd via caddy.service.d/env.conf. Root-only; NEVER commit.
+#
+# One key per client (ADR 0002 in the vps repo). To onboard a client:
+#   1. append:  LLM_KEY_<CLIENT>=$(openssl rand -hex 32)
+#   2. add a matching line to the @no_key matcher in config/caddy/Caddyfile
+#      (in the repo) and redeploy:  header Authorization "Bearer {$LLM_KEY_<CLIENT>}"
+#   3. systemctl reload caddy   — systemd re-reads this file for the reload;
+#      running "caddy reload" by hand does NOT pick up new values.
+# To revoke a client: delete its line here and its matcher line, then reload.
+EOF
+    printf 'LLM_KEY_ADMIN=%s\n' "${admin_key}" >> "${CADDY_ENV_DEST}"
+  )
+  chown root:root "${CADDY_ENV_DEST}"
+  log_success "Generated ${CADDY_ENV_DEST} (mode 600)"
+  log_warn "Initial API key LLM_KEY_ADMIN (also stored in ${CADDY_ENV_DEST}):"
+  log_warn "  ${admin_key}"
+else
+  log_info "${CADDY_ENV_DEST} already exists — keys left untouched"
+fi
+
+if ! grep -q '^LLM_KEY_[A-Z0-9_]*=..*' "${CADDY_ENV_DEST}"; then
+  log_error "${CADDY_ENV_DEST} contains no LLM_KEY_* entry — an empty key would leave the endpoint nearly open. Add one and re-run."
+  exit 1
+fi
+
+# systemd drop-in that loads the env file (required — Caddy must fail to start
+# without its keys rather than start with empty ones).
+if [[ ! -f "${CADDY_DROPIN_DEST}" ]] || ! cmp -s "${CADDY_DROPIN_SRC}" "${CADDY_DROPIN_DEST}"; then
+  install -D -m 644 -o root -g root "${CADDY_DROPIN_SRC}" "${CADDY_DROPIN_DEST}"
+  systemctl daemon-reload
+  log_success "Deployed systemd drop-in ${CADDY_DROPIN_DEST}"
+else
+  log_info "systemd drop-in already up to date"
+fi
+
+# Log directory + file for the llm access log (Caddy runs as user caddy; the
+# caddy-llm fail2ban jail needs the file to exist before it starts).
+install -d -m 755 -o caddy -g caddy "${CADDY_LOG_DIR}"
+if [[ ! -f "${LLM_ACCESS_LOG}" ]]; then
+  touch "${LLM_ACCESS_LOG}"
+  chown caddy:caddy "${LLM_ACCESS_LOG}"
+  chmod 640 "${LLM_ACCESS_LOG}"
+fi
+log_success "Prepared ${LLM_ACCESS_LOG}"
+
+# ---------------------------------------------------------------------------
+# 3. Deploy + validate Caddyfile
+# ---------------------------------------------------------------------------
+section "3. Deploy Caddyfile"
 
 caddyfile_backup=$(backup_file "${CADDYFILE_DEST}" || true)
 install -D -m 644 -o root -g root "${CADDYFILE_SRC}" "${CADDYFILE_DEST}"
 log_success "Deployed ${CADDYFILE_DEST}"
 
-if caddy validate --adapter caddyfile --config "${CADDYFILE_DEST}"; then
+if caddy validate --adapter caddyfile --config "${CADDYFILE_DEST}" --envfile "${CADDY_ENV_DEST}"; then
   log_success "Caddyfile validation OK"
 else
   log_error "Caddyfile validation failed — restoring backup"
@@ -121,9 +196,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Firewall — open 80/443 (required for HTTP-01 + HTTPS)
+# 4. Firewall — open 80/443 (required for HTTP-01 + HTTPS)
 # ---------------------------------------------------------------------------
-section "3. Firewall"
+section "4. Firewall"
 
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   ufw allow 80/tcp comment "HTTP (Caddy / ACME HTTP-01)"
@@ -134,9 +209,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Park Traefik (free ports 80/443 for Caddy)
+# 5. Park Traefik (free ports 80/443 for Caddy)
 # ---------------------------------------------------------------------------
-section "4. Park Traefik"
+section "5. Park Traefik"
 
 if [[ "${KEEP_TRAEFIK}" -eq 1 ]]; then
   log_info "--keep-traefik given — leaving Traefik untouched (you must free 80/443 yourself)"
@@ -160,11 +235,27 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Enable + (re)start Caddy
+# 6. Enable + (re)start Caddy
 # ---------------------------------------------------------------------------
-section "5. Start Caddy"
+section "6. Start Caddy"
 
 service_enable_restart caddy
+
+# ---------------------------------------------------------------------------
+# 7. fail2ban jail for the LLM endpoint
+# ---------------------------------------------------------------------------
+section "7. fail2ban jail (llm endpoint)"
+
+if [[ -d /etc/fail2ban ]]; then
+  backup_file "${F2B_FILTER_DEST}" >/dev/null || true
+  install -D -m 644 -o root -g root "${F2B_FILTER_SRC}" "${F2B_FILTER_DEST}"
+  backup_file "${F2B_JAIL_DEST}" >/dev/null || true
+  install -D -m 644 -o root -g root "${F2B_JAIL_SRC}" "${F2B_JAIL_DEST}"
+  log_success "Deployed caddy-llm fail2ban filter + jail"
+  service_enable_restart fail2ban
+else
+  log_warn "fail2ban not installed — skipping caddy-llm jail (run 00-security-hardening.sh, then re-run this script)"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -178,17 +269,33 @@ cat <<EOF
 
   State on disk:
     ${CADDYFILE_DEST}
+    ${CADDY_ENV_DEST}                       (LLM API keys — root-only, not in git)
     /var/lib/caddy/.local/share/caddy/        (certificates + ACME state)
 
   Routes:
-    https://home.peterek.net   → http://192.168.60.20:8123   (Home Assistant)
-    https://agent.peterek.net  → http://10.9.0.4:8811        (agent webhooks)
+    https://home.peterek.net   → http://192.168.60.20:8123    (Home Assistant)
+    https://agent.peterek.net  → http://192.168.40.10:8811    (agent webhooks)
+    https://llm.peterek.net    → http://192.168.40.10:11434   (Ollama, edge auth)
 
   Verify:
     systemctl status caddy
     journalctl -u caddy -f                     # watch cert issuance
     curl -I https://home.peterek.net
     curl -I https://agent.peterek.net
+    curl -i https://llm.peterek.net/v1/models  # expect 401 without a key
+    curl -i https://llm.peterek.net/v1/models \\
+      -H "Authorization: Bearer <LLM_KEY_ADMIN value from ${CADDY_ENV_DEST}>"
+
+  LLM endpoint (see docs/adr/0002-authenticated-llm-endpoint.md):
+    - Keys: one per client in ${CADDY_ENV_DEST}; onboarding/rotation steps are
+      documented in that file. After key changes: systemctl reload caddy.
+    - Browser clients also need their origin pinned in the @cors_origin
+      matcher in config/caddy/Caddyfile (replace the .invalid placeholder).
+    - Mac Studio side (not managed by this repo): enable "Expose Ollama to
+      the network" in Ollama.app settings (or OLLAMA_HOST=0.0.0.0), allow it
+      through the macOS firewall, and keep the Mac from sleeping.
+    - DNS: llm.peterek.net must be a grey-cloud (DNS-only) A record pointing
+      at this VPS, or HTTP-01 issuance will fail.
 
   Rollback (during the verification window):
     systemctl stop caddy && docker start <traefik-container>

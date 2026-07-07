@@ -1,0 +1,18 @@
+# /etc/fail2ban/jail.d/caddy-llm.local — jail for the LLM endpoint
+# Managed by: scripts/setup/21-caddy.sh
+#
+# Bans IPs that keep probing llm.peterek.net without a valid API key.
+# Deployed by 21-caddy.sh, NOT by 00-security-hardening.sh: on a fresh box the
+# Caddy log this jail watches does not exist until Caddy is installed, and a
+# jail with a missing logpath would break fail2ban startup.
+# See docs/adr/0002-authenticated-llm-endpoint.md.
+
+[caddy-llm]
+enabled  = true
+port     = http,https
+filter   = caddy-llm
+backend  = auto
+logpath  = /var/log/caddy/llm-access.log
+maxretry = 5
+findtime = 600
+bantime  = 3600

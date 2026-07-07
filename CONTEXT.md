@@ -12,7 +12,9 @@ Canonical terms for this VPS infrastructure repo. Definitions only; no implement
 ## Network entities
 
 - **VPS** — the Debian Bookworm host. WireGuard server at `10.9.0.1/24`, public endpoint `37.205.10.203:51830`.
-- **Reverse proxy** — the edge HTTP(S) router on the VPS that terminates TLS and forwards to backends. Currently Traefik (unmanaged, not in repo).
-- **STUDIO** — the WireGuard peer at `10.9.0.4`; the user's "main computer".
+- **Reverse proxy** — the edge HTTP(S) router on the VPS that terminates TLS and forwards to backends. Caddy, natively installed and managed by this repo (replaced Traefik — see ADR 0001).
+- **STUDIO** — the Mac Studio, the user's "main computer". Two addresses reach it: `10.9.0.4` (its own WireGuard peer) and `192.168.40.10` (home LAN, routed via the HOME peer). It hosts both the agent backend and the Ollama LLM server.
 - **HOME** — the WireGuard peer at `10.9.0.2` that advertises the home LAN subnets (incl. `192.168.40.0/24` and `192.168.60.0/24`), making both Home Assistant and the agent backend reachable from the VPS.
-- **Agent endpoint** — `agent.peterek.net`; public hostname that proxies (currently webhooks) to `192.168.40.10:8811`, reached over WireGuard via the HOME peer's advertised `192.168.40.0/24`.
+- **Agent endpoint** — `agent.peterek.net`; public hostname that proxies (currently webhooks) to `192.168.40.10:8811`, reached over WireGuard via the HOME peer's advertised `192.168.40.0/24`. No auth at the edge; the backend validates every request.
+- **LLM endpoint** — `llm.peterek.net`; public hostname that proxies LLM API traffic to Ollama on STUDIO (`192.168.40.10:11434`), same WireGuard path as the agent endpoint. Unlike the agent endpoint, authentication happens **at the edge**: per-client bearer keys checked by the reverse proxy, because Ollama has no authentication of its own. Only inference paths are exposed; model-management paths are blocked.
+- **Edge auth** — an authentication check performed by the reverse proxy before traffic is forwarded, as opposed to backend validation (the agent endpoint pattern). Used when a backend cannot protect itself.

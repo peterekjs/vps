@@ -33,7 +33,7 @@ version-controlled `config/caddy/Caddyfile`.
   publicly reachable). ACME contact: `jiri@peterek.net`.
 - DNS records are **grey-cloud / DNS-only**; Caddy terminates TLS on the VPS.
 - Two static routes: `home.peterek.net` and `agent.peterek.net`.
-  `agent.peterek.net` is a plain `reverse_proxy` to `http://10.9.0.4:8811`.
+  `agent.peterek.net` is a plain `reverse_proxy` to `http://192.168.40.10:8811`.
 - UFW explicitly allows `80,443/tcp` (replacing Traefik's Docker iptables
   bypass with an auditable firewall rule).
 - Cutover: open UFW 80/443 → install Caddy with both routes → **park** Traefik

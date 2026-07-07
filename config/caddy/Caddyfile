@@ -7,7 +7,6 @@
 #
 # DNS records for these hostnames must be grey-cloud (DNS-only) A records
 # pointing at the VPS public IP — see docs/adr/0001-native-caddy-http01-reverse-proxy.md.
-
 {
 	# ACME account contact (expiry / problem notifications from Let's Encrypt).
 	email jiri@peterek.net
@@ -24,4 +23,86 @@ home.peterek.net {
 # See ADR 0001.
 agent.peterek.net {
 	reverse_proxy http://192.168.40.10:8811
+}
+
+# LLM endpoint — Ollama on STUDIO (the Mac Studio), same WireGuard path as the
+# agent endpoint. Ollama has no authentication of its own, so auth happens HERE
+# at the edge: per-client bearer keys, an inference-only path allowlist, and
+# pinned CORS origins. See docs/adr/0002-authenticated-llm-endpoint.md.
+#
+# Key values live in /etc/caddy/caddy.env (root-only, deployed by
+# scripts/setup/21-caddy.sh, never committed) and fill the {$LLM_KEY_*}
+# placeholders when the Caddyfile is loaded. After adding or rotating a key:
+# `systemctl reload caddy` — systemd re-reads the env file for the reload;
+# running `caddy reload` by hand does NOT pick up new values.
+llm.peterek.net {
+	# Per-site access log — the caddy-llm fail2ban jail watches this file.
+	# Caddy redacts the Authorization header in access logs by default.
+	log {
+		output file /var/log/caddy/llm-access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+
+	# Pinned browser origins — one `header Origin ...` line per web app
+	# (values for the same field are OR'ed). Non-pinned origins get no CORS
+	# headers, so browsers refuse the response. ".invalid" can never match;
+	# replace it when the first browser client onboards.
+	@cors_origin {
+		header Origin https://replace-with-web-app-origin.invalid
+	}
+
+	# Browsers preflight with OPTIONS and NO Authorization header.
+	@preflight method OPTIONS
+
+	# Requests presenting none of the client keys. One `header Authorization`
+	# line per client inside `not` — same-field values are OR'ed, so this
+	# matches only when no key fits.
+	@no_key {
+		not {
+			header Authorization "Bearer {$LLM_KEY_ADMIN}"
+		}
+	}
+
+	# Everything outside the inference surface. Model management (/api/pull,
+	# /api/delete, /api/create, /api/push, /api/copy) stays unreachable so a
+	# leaked key cannot touch models or disk. /api/version is allowed because
+	# native clients probe it on startup.
+	@not_inference {
+		not path /v1/* /api/chat /api/generate /api/embed /api/embeddings /api/tags /api/show /api/version
+	}
+
+	# CORS response headers for pinned origins — set on every response,
+	# including 401/403, so browser JS can read errors.
+	header @cors_origin {
+		Access-Control-Allow-Origin {http.request.header.Origin}
+		Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		Access-Control-Allow-Headers "Authorization, Content-Type"
+		Access-Control-Max-Age "86400"
+		Vary Origin
+	}
+
+	# First matching handle wins — the decision tree top to bottom.
+	handle @preflight {
+		respond 204
+	}
+	handle @no_key {
+		respond 401
+	}
+	handle @not_inference {
+		respond 403
+	}
+	handle {
+		# Origin is stripped so the edge pinning above is the single source of
+		# truth (Ollama has its own origin allowlist, OLLAMA_ORIGINS, which
+		# would otherwise 403 proxied browser requests). Host is rewritten so
+		# Ollama sees a plain direct request. flush_interval -1 streams tokens
+		# immediately instead of buffering NDJSON/SSE responses.
+		reverse_proxy http://192.168.40.10:11434 {
+			header_up Host {upstream_hostport}
+			header_up -Origin
+			flush_interval -1
+		}
+	}
 }
