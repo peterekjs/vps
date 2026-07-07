@@ -16,3 +16,6 @@ src/
 .claude/*.local.json
 
 .DS_Store
+
+vps-backup.key
+backup/*
