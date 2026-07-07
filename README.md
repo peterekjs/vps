@@ -7,6 +7,9 @@ Tools & configurations for my personal VPS (Debian Bookworm).
 config/                        # Drop-in configuration files deployed by scripts
   caddy/Caddyfile              # Edge reverse proxy routes (TLS via Let's Encrypt)
   fail2ban/jail.local          # Fail2ban jail overrides
+  maintenance/                 # Maintenance toolkit config template + systemd timers
+    vps-maintenance.conf       #   template for /etc/vps-maintenance.conf
+    systemd/                   #   vps-{health,backup,audit}.{service,timer}
   ssh/sshd_config              # Hardened OpenSSH server configuration
   sysctl/hardening.conf        # Kernel parameter hardening (sysctl)
   unattended-upgrades/         # Automatic security update configuration
@@ -14,7 +17,18 @@ config/                        # Drop-in configuration files deployed by scripts
 scripts/
   setup/
     00-security-hardening.sh   # Initial security hardening (run once on a fresh VPS)
+    01-maintenance.sh          # Install the vps-* maintenance toolkit + timers
     21-caddy.sh                # Caddy edge reverse proxy (HTTP-01 TLS)
+  maintenance/                 # Sources of the installed vps-* commands
+    lib.sh                     #   shared helpers → /usr/local/lib/vps-maintenance/
+    vps-health.sh              #   health report → /usr/local/sbin/vps-health
+    vps-backup.sh              #   encrypted snapshots → vps-backup
+    vps-restore.sh             #   snapshot restore → vps-restore
+    vps-audit.sh               #   hardening drift audit → vps-audit
+    vps-update.sh              #   deliberate patch routine → vps-update
+    vps-notify.sh              #   Home Assistant notifier → vps-notify
+  home/
+    pull-backups.sh            # Run at HOME: mirror snapshots off the VPS
   wireguard/
     init.sh                    # Initialize this VPS as a WireGuard server
     add-peer.sh                # Add a peer (generates keys, prints client config)
@@ -22,6 +36,9 @@ scripts/
   utils/
     common.sh                  # Shared helper functions sourced by all scripts
     wireguard.sh               # WireGuard-specific helpers (keys, IPs, sync)
+docs/
+  adr/                         # Architecture decision records
+  runbooks/                    # Operational guides — start at docs/runbooks/README.md
 wireguard/
   templates/                   # Optional templates fed to init.sh --template
 ```
@@ -185,3 +202,53 @@ window: `systemctl stop caddy && docker start <traefik-container>`.
 > `http.trusted_proxies` and set `use_x_forwarded_for: true` in its
 > `configuration.yaml`, or logins will fail. (Home Assistant side — not managed
 > by this repo.)
+
+## Maintenance
+
+The maintenance toolkit installs six `vps-*` commands plus systemd timers that
+watch the box and page you through Home Assistant. Full operational docs live
+in [docs/runbooks/](docs/runbooks/README.md).
+
+```bash
+sudo bash scripts/setup/01-maintenance.sh
+```
+
+First-install checklist (details in the runbooks):
+
+1. **At home:** `age-keygen -o vps-backup.key` → put the public key in
+   `/etc/vps-maintenance.conf` (`AGE_RECIPIENT`); keep the private key in your
+   password manager + one offline copy. It never goes on the VPS.
+2. Create the Home Assistant webhook automation
+   ([health-monitoring.md](docs/runbooks/health-monitoring.md)) and set
+   `HA_WEBHOOK_URL`.
+3. `sudo usermod -aG vpsbackup <user>` so your SSH user can pull snapshots,
+   then from home: `scripts/home/pull-backups.sh <user>@<vps>`.
+4. Test: `sudo vps-notify --title Test "hello"`, then `sudo vps-backup && sudo vps-health`.
+
+### Commands
+
+| Command | Purpose | Runbook |
+|---|---|---|
+| `vps-health` | One-shot health report (services, disk, certs, WG peers, backups) | [health-monitoring.md](docs/runbooks/health-monitoring.md) |
+| `vps-backup` | age-encrypted snapshot of identity & secrets → `/var/backups/vps` | [backup-and-restore.md](docs/runbooks/backup-and-restore.md) |
+| `vps-restore` | Restore a snapshot (dry-run, per-file `.bak` safety copies) | [backup-and-restore.md](docs/runbooks/backup-and-restore.md) |
+| `vps-audit` | Hardening drift audit: live system vs this repo | [drift-audit.md](docs/runbooks/drift-audit.md) |
+| `vps-update` | Deliberate monthly full-upgrade with backup + health gates | [updates-and-patching.md](docs/runbooks/updates-and-patching.md) |
+| `vps-notify` | Send a message to the Home Assistant webhook | [health-monitoring.md](docs/runbooks/health-monitoring.md) |
+
+Exit codes for the check commands: `0` ok · `1` warnings · `2` critical.
+
+### Timers
+
+| Timer | Cadence | Pages you when |
+|---|---|---|
+| `vps-backup.timer` | daily 05:30 | a snapshot fails |
+| `vps-health.timer` | daily 07:00 | any check warns or goes critical |
+| `vps-audit.timer` | weekly Sun 07:30 | live config drifts from this repo |
+
+`vps-update` deliberately has **no timer** — security patches are automatic
+via unattended-upgrades; full upgrades with possible reboots are a human
+decision.
+
+After a `git pull`, re-run `sudo bash scripts/setup/01-maintenance.sh` to
+redeploy the toolkit (the audit will remind you if you forget).
