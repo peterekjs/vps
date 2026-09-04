@@ -225,8 +225,21 @@ cp "${SYSCTL_CONF_SRC}" "${SYSCTL_CONF}"
 chmod 644 "${SYSCTL_CONF}"
 chown root:root "${SYSCTL_CONF}"
 
-sysctl --system > /dev/null
-log_success "Kernel parameters applied"
+# Inside a container (this VPS is LXC) kernel.* and fs.* keys belong to the
+# host kernel: writes fail with "permission denied" and sysctl exits 1, which
+# under set -e would abort the script here — after UFW was reset but before
+# fail2ban/auditd. Tolerate those failures and list what could not be applied.
+sysctl_errors="$(sysctl --system 2>&1 >/dev/null | grep -i 'permission denied' || true)"
+if [[ -z "${sysctl_errors}" ]]; then
+  log_success "Kernel parameters applied"
+elif [[ "$(systemd-detect-virt --container 2>/dev/null || true)" != "none" ]]; then
+  log_warn "Kernel parameters applied except host-owned keys (container — set them on the host if needed):"
+  while IFS= read -r line; do log_warn "  ${line}"; done <<< "${sysctl_errors}"
+else
+  log_error "sysctl could not apply some keys:"
+  while IFS= read -r line; do log_error "  ${line}"; done <<< "${sysctl_errors}"
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # 8. Password & account policy

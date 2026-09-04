@@ -37,7 +37,10 @@ Exit codes: `0` clean, `1` warnings (drift), `2` critical (hardening broken).
 3. **sshd effective settings** (`sshd -T`) — root login off, password auth off.
 4. **UFW** — active; expected allows present (SSH port from `sshd -T`, 80,
    443, each WireGuard `ListenPort`); **unexpected** allow rules flagged.
-5. **Live sysctl values** match `config/sysctl/hardening.conf`.
+5. **Live sysctl values** match `config/sysctl/hardening.conf`. In a
+   container (this VPS is LXC) `kernel.*`/`fs.*` keys belong to the host
+   kernel; the audit probes writability and reports those as informational
+   `ok` lines, not drift — they can only be changed on the hypervisor.
 6. **caddy.env guards** (ADR 0002) — exists, `600 root:root`, has an
    `LLM_KEY_*` entry.
 7. **Boot enablement** of core services + unattended-upgrades periodic run.

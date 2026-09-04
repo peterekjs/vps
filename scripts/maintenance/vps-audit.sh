@@ -126,7 +126,11 @@ else
 fi
 
 # --- 4. Live sysctl values --------------------------------------------------------
+# Inside a container, kernel.* / fs.* keys are owned by the host kernel and
+# cannot be changed from here; a mismatch is reported but is not drift.
 sysctl_src="${REPO_DIR}/config/sysctl/hardening.conf"
+in_container=0
+[[ "$(systemd-detect-virt --container 2>/dev/null || true)" != "none" ]] && in_container=1
 if [[ -f "${sysctl_src}" ]]; then
   while IFS='=' read -r key val; do
     key=$(echo "${key}" | tr -d '[:space:]')
@@ -139,6 +143,10 @@ if [[ -f "${sysctl_src}" ]]; then
     live=$(echo "${live}" | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')
     if [[ "${live}" == "${want}" ]]; then
       check_ok "sysctl ${key} = ${live}"
+    elif [[ "${in_container}" -eq 1 ]] && ! sysctl -q -w "${key}=${live}" 2>/dev/null; then
+      # Re-writing the current value is a no-op probe: permission denied means
+      # the host kernel owns this key and nothing on this VPS can drift it.
+      check_ok "sysctl ${key} = ${live} (repo wants ${want}; host-owned in container, not settable here)"
     else
       check_warn "sysctl ${key} = ${live} (repo wants ${want})"
     fi
