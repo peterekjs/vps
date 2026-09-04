@@ -93,7 +93,7 @@ else
   # Point the drift audit at this clone
   sed -i "s|^REPO_DIR=.*|REPO_DIR=\"${REPO_ROOT}\"|" "${CONF_DEST}"
   log_success "Deployed ${CONF_DEST} (REPO_DIR=${REPO_ROOT})"
-  log_warn "EDIT ${CONF_DEST}: set HA_WEBHOOK_URL and AGE_RECIPIENT before relying on backups/alerts"
+  log_warn "EDIT ${CONF_DEST}: set MAIL_TO/SMTP_USER/SMTP_PASS and AGE_RECIPIENT before relying on backups/alerts"
 fi
 
 # ---------------------------------------------------------------------------
@@ -125,8 +125,8 @@ $(systemctl list-timers 'vps-*' --no-pager | sed 's/^/    /')
     1. At HOME, generate the backup key:   age-keygen -o vps-backup.key
        → paste the public key into ${CONF_DEST} (AGE_RECIPIENT)
        → keep the key file at home; NEVER copy it to this VPS
-    2. Create the Home Assistant webhook automation
-       (docs/runbooks/health-monitoring.md) and set HA_WEBHOOK_URL
+    2. Create a Google app password for the alert mailbox
+       (docs/runbooks/health-monitoring.md) and set MAIL_TO, SMTP_USER, SMTP_PASS
     3. Test the channel:                   vps-notify --title Test "hello from \$(hostname)"
     4. First snapshot + health pass:       vps-backup && vps-health
     5. Allow your SSH user to pull backups: usermod -aG vpsbackup <user>

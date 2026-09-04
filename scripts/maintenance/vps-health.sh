@@ -6,7 +6,8 @@
 #
 # Checks: core services, wg-quick interfaces + their UFW port, disk/memory/load, TLS cert
 # expiry for every Caddyfile hostname, WireGuard handshakes for critical
-# peers, pending updates + reboot-required, fail2ban jails, backup freshness.
+# peers, notification channel configured, pending updates + reboot-required,
+# fail2ban jails, backup freshness.
 # Exit codes: 0 ok, 1 warnings, 2 critical. --notify pushes findings to Home
 # Assistant (used by vps-health.timer); --quiet suppresses OK lines.
 # See docs/runbooks/health-monitoring.md.
@@ -94,6 +95,17 @@ if ufw status 2>/dev/null | grep -q "Status: active"; then
       check_crit "ufw has NO allow rule for ${wg_port}/udp (wg ${c}) — peers cannot handshake; fix: ufw allow ${wg_port}/udp comment 'WireGuard ${c}'"
     fi
   done
+fi
+
+# --- Notification channel -----------------------------------------------------
+# Every finding below is only useful if it can reach you. This was silently
+# broken for months (HA_WEBHOOK_URL never set) — make it a visible finding.
+if [[ -n "${MAIL_TO}" && -n "${SMTP_URL}" && -n "${SMTP_USER}" && -n "${SMTP_PASS}" ]]; then
+  check_ok "notification channel: email to ${MAIL_TO}"
+elif [[ -n "${HA_WEBHOOK_URL}" ]]; then
+  check_warn "notification channel: webhook only — it rides over WireGuard, so tunnel failures go unreported; set MAIL_TO/SMTP_* too"
+else
+  check_warn "no notification channel configured — set MAIL_TO/SMTP_* in ${VPS_MAINT_CONF}; --notify runs cannot reach you"
 fi
 
 # --- 2. Disk / memory / load -------------------------------------------------

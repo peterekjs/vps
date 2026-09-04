@@ -8,7 +8,8 @@
 ## Prerequisites
 
 - Toolkit installed: `sudo bash scripts/setup/01-maintenance.sh`
-- `/etc/vps-maintenance.conf` filled in (at minimum `HA_WEBHOOK_URL` for alerts).
+- `/etc/vps-maintenance.conf` filled in (at minimum `MAIL_TO`, `SMTP_USER`,
+  `SMTP_PASS` for alerts).
 
 ## Steps
 
@@ -41,7 +42,44 @@ Cert note: Let's Encrypt certs are renewed by Caddy ~30 days before expiry, so
 anything under `CERT_WARN_DAYS` (default 14) means renewal has been failing
 for weeks — check `journalctl -u caddy` and that ports 80/443 are reachable.
 
-### Setting up the Home Assistant webhook (one-time)
+### Setting up email alerts (one-time, primary channel)
+
+Email is the primary channel because it does **not** depend on WireGuard:
+a broken tunnel is exactly the failure that must still reach you (the
+Home Assistant webhook below cannot report it). No MTA is installed —
+`vps-notify` speaks SMTPS directly through `curl`.
+
+1. Create a Google **app password** for the mailbox that will send the alerts
+   (your own Workspace account is fine): <https://myaccount.google.com/apppasswords>,
+   name it `vps-notify`. This needs 2-step verification on the account. The
+   app password is a mailbox credential living on the VPS — if the box is ever
+   compromised, **revoke that one app password** there and nothing else changes.
+2. On the VPS, set in `/etc/vps-maintenance.conf` (mode 600 root):
+
+   ```bash
+   MAIL_TO="you@example.com"
+   SMTP_URL="smtps://smtp.gmail.com:465"
+   SMTP_USER="you@example.com"
+   SMTP_PASS="xxxx xxxx xxxx xxxx"     # the app password; spaces are fine
+   ```
+
+3. Test the channel end-to-end (the subject arrives as
+   `[WARNING] Test (<hostname>)`):
+
+   ```bash
+   sudo vps-notify --severity warning --title "Test" "hello from the VPS"
+   ```
+
+4. Optionally add a Gmail filter on subject `[CRITICAL]` so those bypass
+   the inbox tabs / trigger a phone alert.
+
+The app password also lands in backups through `/etc/vps-maintenance.conf`,
+which is already in `BACKUP_PATHS` and age-encrypted — nothing extra to do.
+
+### Setting up the Home Assistant webhook (optional second channel)
+
+Only useful for phone push while the tunnel is up; leave `HA_WEBHOOK_URL`
+empty if you don't need it. Both channels are tried when both are set.
 
 1. In Home Assistant: **Settings → Automations & Scenes → Create automation**.
 2. Trigger: **Webhook**, id `vps-maintenance`, method **POST**, leave "Only
@@ -62,14 +100,10 @@ for weeks — check `journalctl -u caddy` and that ports 80/443 are reachable.
    HA_WEBHOOK_URL="http://192.168.60.20:8123/api/webhook/vps-maintenance"
    ```
 
-5. Test the channel end-to-end:
+5. Test with the same `vps-notify` command as above — both channels report.
 
-   ```bash
-   sudo vps-notify --severity warning --title "Test" "hello from the VPS"
-   ```
-
-Silence is a signal: the notifier only pages on findings, so if the tunnel or
-HA is down you will simply stop getting anything — a manual `sudo vps-health`
+Silence is a signal: the notifier only pages on findings, so if the mail
+channel breaks you will simply stop getting anything — a manual `sudo vps-health`
 during a quiet week is a cheap sanity check.
 
 ## Verify

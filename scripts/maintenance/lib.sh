@@ -64,6 +64,11 @@ load_conf() {
   else
     log_warn "${VPS_MAINT_CONF} not found — using built-in defaults"
   fi
+  MAIL_TO="${MAIL_TO:-}"
+  MAIL_FROM="${MAIL_FROM:-}"
+  SMTP_URL="${SMTP_URL:-smtps://smtp.gmail.com:465}"
+  SMTP_USER="${SMTP_USER:-}"
+  SMTP_PASS="${SMTP_PASS:-}"
   HA_WEBHOOK_URL="${HA_WEBHOOK_URL:-}"
   AGE_RECIPIENT="${AGE_RECIPIENT:-}"
   REPO_DIR="${REPO_DIR:-/opt/vps}"

@@ -26,7 +26,7 @@ scripts/
     vps-restore.sh             #   snapshot restore → vps-restore
     vps-audit.sh               #   hardening drift audit → vps-audit
     vps-update.sh              #   deliberate patch routine → vps-update
-    vps-notify.sh              #   Home Assistant notifier → vps-notify
+    vps-notify.sh              #   Email (+ optional HA webhook) notifier → vps-notify
   home/
     pull-backups.sh            # Run at HOME: mirror snapshots off the VPS
   wireguard/
@@ -218,9 +218,10 @@ First-install checklist (details in the runbooks):
 1. **At home:** `age-keygen -o vps-backup.key` → put the public key in
    `/etc/vps-maintenance.conf` (`AGE_RECIPIENT`); keep the private key in your
    password manager + one offline copy. It never goes on the VPS.
-2. Create the Home Assistant webhook automation
+2. Create a Google app password for the alert mailbox
    ([health-monitoring.md](docs/runbooks/health-monitoring.md)) and set
-   `HA_WEBHOOK_URL`.
+   `MAIL_TO`, `SMTP_USER`, `SMTP_PASS`. Email is deliberately independent of
+   WireGuard; the Home Assistant webhook (`HA_WEBHOOK_URL`) is optional.
 3. `sudo usermod -aG vpsbackup <user>` so your SSH user can pull snapshots,
    then from home: `scripts/home/pull-backups.sh <user>@<vps>`.
 4. Test: `sudo vps-notify --title Test "hello"`, then `sudo vps-backup && sudo vps-health`.
@@ -234,7 +235,7 @@ First-install checklist (details in the runbooks):
 | `vps-restore` | Restore a snapshot (dry-run, per-file `.bak` safety copies) | [backup-and-restore.md](docs/runbooks/backup-and-restore.md) |
 | `vps-audit` | Hardening drift audit: live system vs this repo | [drift-audit.md](docs/runbooks/drift-audit.md) |
 | `vps-update` | Deliberate monthly full-upgrade with backup + health gates | [updates-and-patching.md](docs/runbooks/updates-and-patching.md) |
-| `vps-notify` | Send a message to the Home Assistant webhook | [health-monitoring.md](docs/runbooks/health-monitoring.md) |
+| `vps-notify` | Send an alert by email (and to the HA webhook if set) | [health-monitoring.md](docs/runbooks/health-monitoring.md) |
 
 Exit codes for the check commands: `0` ok · `1` warnings · `2` critical.
 
