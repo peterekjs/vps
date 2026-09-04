@@ -83,7 +83,7 @@ sudo bash scripts/setup/00-security-hardening.sh --ssh-port 2222
 |------|--------|
 | System update | Full `apt full-upgrade` |
 | SSH hardening | Deploys `config/ssh/sshd_config` — disables root login & password auth, restricts ciphers |
-| Firewall (UFW) | Default-deny incoming; allows only the SSH port |
+| Firewall (UFW) | Default-deny incoming; allows the SSH port. On re-runs it also re-opens ports of already-deployed services (each WireGuard `ListenPort`, Caddy 80/443) — the reset would otherwise wipe them |
 | Fail2ban | Bans IPs for 24 h after 3 failed SSH logins |
 | Automatic updates | Enables `unattended-upgrades` for security packages |
 | Kernel hardening | Deploys `config/sysctl/hardening.conf` — enables SYN cookies, disables ICMP redirects, ASLR max, etc. |

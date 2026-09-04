@@ -86,7 +86,7 @@ Nothing to roll back — the command only reads. When it reports problems:
 | Finding | Go to |
 |---|---|
 | cert expiring / unfetchable | this file (cert note) + `journalctl -u caddy -f` |
-| WG handshake critical | check the home router / HOME peer; `sudo wg show` |
+| WG handshake critical | *all* peers never/stale → firewall: `sudo ufw status \| grep udp` must list each WireGuard `ListenPort` (a hardening re-run before 2026-09 dropped it). Single peer → check that device / the home router; `sudo wg show` |
 | backup stale or missing | [backup-and-restore.md](backup-and-restore.md) |
 | reboot required | [updates-and-patching.md](updates-and-patching.md) |
 | service not active | `systemctl status <svc>`, then the service's runbook/ADR |

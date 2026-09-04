@@ -138,10 +138,37 @@ ufw default allow outgoing
 # Allow SSH before enabling to avoid locking ourselves out
 ufw allow "${SSH_PORT}/tcp" comment "SSH"
 
+# Re-open ports owned by other setup scripts. The reset above wipes every
+# rule, so a re-run of this script must not silently close what
+# scripts/wireguard/init.sh and scripts/setup/21-caddy.sh opened — that is
+# exactly what happened on 2026-07-07: WireGuard kept listening while UFW
+# dropped every handshake for weeks. Derive the ports from the deployed state
+# so this stays correct without a hand-maintained list.
+reopened=()
+for wg_conf in /etc/wireguard/*.conf; do
+  [[ -f "${wg_conf}" ]] || continue
+  wg_name="$(basename "${wg_conf}" .conf)"
+  wg_port="$(awk -F'=' '/^[[:space:]]*ListenPort[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' "${wg_conf}")"
+  if [[ "${wg_port}" =~ ^[0-9]+$ ]]; then
+    ufw allow "${wg_port}/udp" comment "WireGuard ${wg_name}"
+    reopened+=("${wg_port}/udp (WireGuard ${wg_name})")
+  else
+    log_warn "No ListenPort in ${wg_conf} — not opening a UFW rule for it"
+  fi
+done
+if systemctl is-enabled --quiet caddy 2>/dev/null; then
+  ufw allow 80/tcp comment "HTTP (Caddy / ACME HTTP-01)"
+  ufw allow 443/tcp comment "HTTPS (Caddy)"
+  reopened+=("80/tcp, 443/tcp (Caddy)")
+fi
+
 # Enable UFW
 ufw --force enable
 
 log_success "UFW enabled — default deny incoming, SSH (port ${SSH_PORT}) allowed"
+if [[ ${#reopened[@]} -gt 0 ]]; then
+  log_info "Re-opened ports for already-deployed services: ${reopened[*]}"
+fi
 ufw status verbose
 
 # ---------------------------------------------------------------------------

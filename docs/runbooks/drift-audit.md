@@ -53,7 +53,7 @@ file and repo agree:
 ```bash
 diff /etc/ssh/sshd_config "$REPO_DIR/config/ssh/sshd_config"
 # edit the repo copy to match intent, commit, push, pull on the VPS…
-sudo bash scripts/setup/00-security-hardening.sh   # owner of ssh/fail2ban/sysctl
+sudo bash scripts/setup/00-security-hardening.sh   # owner of ssh/fail2ban/sysctl/UFW
 sudo bash scripts/setup/21-caddy.sh                # owner of Caddyfile/caddy-llm
 sudo bash scripts/setup/01-maintenance.sh          # owner of vps-*/timers/conf template
 ```
@@ -92,3 +92,11 @@ SSH session open** and verify a fresh login in a second terminal before
 disconnecting — see [lockout-recovery.md](lockout-recovery.md) if it goes
 wrong. Deploy scripts back up every file they overwrite (`*.bak.<ts>`), so
 the pre-redeploy state is always recoverable.
+
+`00-security-hardening.sh` **resets UFW** and rebuilds the rule set. It
+re-opens the SSH port, every `ListenPort` found in `/etc/wireguard/*.conf`,
+and 80/443 when the caddy unit is enabled. Anything else (a manually added
+rule, a service whose setup script opens its own port) is gone after the
+re-run — check `sudo ufw status` against the audit's expected list before
+you log off. UFW keeps a copy of the previous rules as
+`/etc/ufw/user.rules.<timestamp>` if you need to see what was there.
