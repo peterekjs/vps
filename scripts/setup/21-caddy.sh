@@ -274,6 +274,7 @@ cat <<EOF
 
   Routes:
     https://home.peterek.net   → http://192.168.60.20:8123    (Home Assistant)
+    https://plex.peterek.net   → http://192.168.60.10:32400   (Plex on the QNAP NAS)
     https://agent.peterek.net  → http://192.168.40.10:8811    (agent webhooks)
     https://llm.peterek.net    → http://192.168.40.10:11434   (Ollama, edge auth)
 
@@ -281,6 +282,7 @@ cat <<EOF
     systemctl status caddy
     journalctl -u caddy -f                     # watch cert issuance
     curl -I https://home.peterek.net
+    curl -s https://plex.peterek.net/identity | head -c 200   # Plex XML identity
     curl -I https://agent.peterek.net
     curl -i https://llm.peterek.net/v1/models  # expect 401 without a key
     curl -i https://llm.peterek.net/v1/models \\
@@ -302,6 +304,10 @@ cat <<EOF
 
   Once both routes verify, remove the parked Traefik for good:
     docker rm <traefik-container>              # and delete its compose/config
+
+  Plex (see docs/runbooks/plex-remote-access.md): on the NAS set
+    Settings → Network → Custom server access URLs = https://plex.peterek.net:443
+  and allow 10.9.0.1 (this VPS's WireGuard address) through the QNAP firewall.
 
   NOTE: Home Assistant must trust this reverse proxy or logins will fail. In its
   configuration.yaml add the VPS WireGuard address to http.trusted_proxies and

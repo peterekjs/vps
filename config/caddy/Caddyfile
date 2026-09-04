@@ -17,6 +17,18 @@ home.peterek.net {
 	reverse_proxy http://192.168.60.20:8123
 }
 
+# Plex Media Server — on the QNAP NAS, same HOME-peer route as Home Assistant.
+# Plex authenticates every request itself (plex.tv account / token), so this
+# is a plain proxy. Remote clients reach the server through this hostname via
+# the "Custom server access URLs" setting on the NAS — see
+# docs/runbooks/plex-remote-access.md. flush_interval -1 keeps video segments
+# and the notification websocket streaming instead of buffering.
+plex.peterek.net {
+	reverse_proxy http://192.168.60.10:32400 {
+		flush_interval -1
+	}
+}
+
 # Agent webhooks — forwarded over WireGuard to a home-LAN host (192.168.40.0/24
 # is advertised by the HOME peer, same routing path as Home Assistant).
 # No proxy-level auth: the backend MUST validate every webhook (signature/secret).

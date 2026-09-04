@@ -35,6 +35,7 @@ it, write one as part of the change (repo convention, see `CLAUDE.md`).
 | New Debian release is out | [debian-release-upgrade.md](debian-release-upgrade.md) |
 | New provider or public IP | [provider-or-ip-migration.md](provider-or-ip-migration.md) |
 | Exposing a new service / adding a WG peer | [add-a-service.md](add-a-service.md) |
+| Plex on the NAS not reachable from outside | [plex-remote-access.md](plex-remote-access.md) |
 
 ## Runbook skeleton (the convention)
 
