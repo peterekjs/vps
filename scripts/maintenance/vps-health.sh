@@ -4,7 +4,7 @@
 # Usage:
 #   vps-health [--notify] [--quiet]
 #
-# Checks: core services, wg-quick interfaces, disk/memory/load, TLS cert
+# Checks: core services, wg-quick interfaces + their UFW port, disk/memory/load, TLS cert
 # expiry for every Caddyfile hostname, WireGuard handshakes for critical
 # peers, pending updates + reboot-required, fail2ban jails, backup freshness.
 # Exit codes: 0 ok, 1 warnings, 2 critical. --notify pushes findings to Home
@@ -72,6 +72,26 @@ else
       check_ok "service ${u} active"
     else
       check_crit "service ${u} NOT active"
+    fi
+  done
+fi
+
+# An interface that is up but firewalled is indistinguishable from a healthy
+# one until every peer's handshake goes stale — 00-security-hardening.sh
+# resets UFW, and a re-run on 2026-07-07 silently dropped the WireGuard port
+# for two months. Check the listen port has an allow rule while UFW is active.
+if ufw status 2>/dev/null | grep -q "Status: active"; then
+  mapfile -t ufw_udp_allows < <(ufw status 2>/dev/null | awk '$2 != "(v6)" && /ALLOW/ && $1 ~ /\/udp$/ {print $1}' | sort -u)
+  for c in "${wg_confs[@]}"; do
+    wg_port=$(awk -F'=' '/^[[:space:]]*ListenPort[[:space:]]*=/ {gsub(/[[:space:]]/, "", $2); print $2; exit}' "/etc/wireguard/${c}.conf")
+    if [[ ! "${wg_port}" =~ ^[0-9]+$ ]]; then
+      check_warn "wg ${c}: no ListenPort in /etc/wireguard/${c}.conf — cannot verify firewall"
+      continue
+    fi
+    if printf '%s\n' "${ufw_udp_allows[@]}" | grep -qxF "${wg_port}/udp"; then
+      check_ok "ufw allows ${wg_port}/udp (wg ${c})"
+    else
+      check_crit "ufw has NO allow rule for ${wg_port}/udp (wg ${c}) — peers cannot handshake; fix: ufw allow ${wg_port}/udp comment 'WireGuard ${c}'"
     fi
   done
 fi
