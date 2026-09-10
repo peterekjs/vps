@@ -172,13 +172,27 @@ else
 fi
 
 # --- 6. Boot enablement + unattended-upgrades ------------------------------------------
-for svc in ssh caddy fail2ban auditd; do
+for svc in ssh caddy fail2ban; do
   if systemctl is-enabled --quiet "${svc}"; then
     check_ok "${svc} enabled at boot"
   else
     check_warn "${svc} NOT enabled at boot"
   fi
 done
+# auditd needs CAP_AUDIT_CONTROL, which containers (LXC, OpenVZ) never get
+# delegated from the host — 00-security-hardening.sh deliberately leaves it
+# disabled there and vps-health skips it, so this check must agree instead of
+# emailing a false "NOT enabled at boot" warning every week.
+container_type="$(systemd-detect-virt --container 2>/dev/null || echo none)"
+if [[ "${container_type}" == "none" ]]; then
+  if systemctl is-enabled --quiet auditd; then
+    check_ok "auditd enabled at boot"
+  else
+    check_warn "auditd NOT enabled at boot"
+  fi
+else
+  check_ok "auditd skipped (${container_type} container — unsupported here)"
+fi
 if [[ -f /etc/apt/apt.conf.d/20auto-upgrades ]] \
    && grep -q 'APT::Periodic::Unattended-Upgrade "1"' /etc/apt/apt.conf.d/20auto-upgrades; then
   check_ok "unattended-upgrades periodic run enabled"

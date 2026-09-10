@@ -44,6 +44,10 @@ Exit codes: `0` clean, `1` warnings (drift), `2` critical (hardening broken).
 6. **caddy.env guards** (ADR 0002) — exists, `600 root:root`, has an
    `LLM_KEY_*` entry.
 7. **Boot enablement** of core services + unattended-upgrades periodic run.
+   `auditd` is only expected to be enabled on a real VM/bare metal; in a
+   container (LXC/OpenVZ) it cannot set the kernel audit state, the hardening
+   script leaves it disabled, and the audit reports it as an informational
+   `ok` line rather than a warning (same rule `vps-health` applies).
 8. **fail2ban jails** `sshd` and `caddy-llm` active.
 
 ## Resolving drift — the core decision
