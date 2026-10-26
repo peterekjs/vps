@@ -31,7 +31,7 @@ Numbers under `scripts/setup/` are grouped by category, and within each category
 - `0x` — initial setup / hardening (`00` = baseline hardening; `01` = maintenance toolkit)
 - `1x` — accounts / users (`10` reserved for shared base)
 - `2x` — communication / networking (`20` reserved; `21-caddy.sh` is the edge reverse proxy; the WireGuard scripts under `scripts/wireguard/` predate this convention)
-- `3x` — application services (`30` reserved for a shared service-tier bootstrap such as a future `30-docker.sh`; no individual service scripts currently)
+- `3x` — application services (`30` reserved for a shared service-tier bootstrap such as a future `30-docker.sh`; `31-agent-loop-receiver.sh` is the GitHub webhook receiver — it installs Node.js itself; extract that into `30` when a second Node consumer appears)
 
 When adding a new setup script: pick the lowest free number ≥ `N1` in the matching category range. Do not take an `N0` slot unless the script genuinely installs shared infrastructure used by every other script in the range — when a second consumer of that infrastructure appears, extract the shared logic into the `N0` script then. Otherwise follow the same pattern as the existing scripts: number prefix, source `common.sh`, use the helpers rather than reinventing logging/backup/install logic.
 
@@ -76,6 +76,8 @@ There is no CI, no test framework, and no lint configured in-repo — `shellchec
 `00-security-hardening.sh` **disables SSH password authentication**. Any change to SSH config or firewall rules in this repo can lock the operator out of their VPS. When modifying `config/ssh/sshd_config`, `config/fail2ban/jail.local`, or the UFW section of the hardening script, preserve the existing pattern: validate config syntax before restart, allow the SSH port in UFW *before* enabling the firewall, and keep the backup-and-rollback flow intact.
 
 `21-caddy.sh` is the public TLS edge. `agent.peterek.net` forwards unauthenticated traffic over WireGuard to `192.168.40.10:8811` — the backend is solely responsible for validating webhooks. Caddy uses Let's Encrypt **HTTP-01** (no Cloudflare), so ports 80 + 443 must stay open and the hostnames must resolve grey-cloud (DNS-only) to the VPS. Background and rejected alternatives: [docs/adr/0001-native-caddy-http01-reverse-proxy.md](docs/adr/0001-native-caddy-http01-reverse-proxy.md).
+
+`agent-loop.peterek.net` proxies to the **local** `agent-loop-receiver.service` (`127.0.0.1:8812`, source: `peterekjs/agent-loop` checked out at `/opt/agent-loop`). No edge auth — the receiver rejects any delivery whose `X-Hub-Signature-256` does not match the GitHub App secret in `/etc/agent-loop-receiver/env`. That directory (deploy key, env, App private key) is machine-specific state in `BACKUP_PATHS`; never commit its contents. Procedure: [docs/runbooks/agent-loop-receiver.md](docs/runbooks/agent-loop-receiver.md).
 
 `plex.peterek.net` proxies Plex on the QNAP NAS (`192.168.60.10:32400`) with no edge auth — Plex validates every request with its own account tokens. Remote apps only find it because the NAS publishes the URL to plex.tv (*Custom server access URLs*, see [docs/runbooks/plex-remote-access.md](docs/runbooks/plex-remote-access.md)); the hostname must stay `https://…:443` there.
 

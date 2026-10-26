@@ -45,6 +45,7 @@ CONFIG_MAP=(
   "config/maintenance/systemd/vps-backup.timer:/etc/systemd/system/vps-backup.timer"
   "config/maintenance/systemd/vps-audit.service:/etc/systemd/system/vps-audit.service"
   "config/maintenance/systemd/vps-audit.timer:/etc/systemd/system/vps-audit.timer"
+  "config/agent-loop-receiver/agent-loop-receiver.service:/etc/systemd/system/agent-loop-receiver.service"
 )
 
 # --- 1. Repo-managed config drift -------------------------------------------

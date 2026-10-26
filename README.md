@@ -6,6 +6,7 @@ Tools & configurations for my personal VPS (Debian Bookworm).
 ```
 config/                        # Drop-in configuration files deployed by scripts
   caddy/Caddyfile              # Edge reverse proxy routes (TLS via Let's Encrypt)
+  agent-loop-receiver/         # systemd unit for the agent-loop webhook receiver
   fail2ban/jail.local          # Fail2ban jail overrides
   maintenance/                 # Maintenance toolkit config template + systemd timers
     vps-maintenance.conf       #   template for /etc/vps-maintenance.conf
@@ -19,6 +20,7 @@ scripts/
     00-security-hardening.sh   # Initial security hardening (run once on a fresh VPS)
     01-maintenance.sh          # Install the vps-* maintenance toolkit + timers
     21-caddy.sh                # Caddy edge reverse proxy (HTTP-01 TLS)
+    31-agent-loop-receiver.sh  # GitHub App webhook receiver for peterekjs/agent-loop
   maintenance/                 # Sources of the installed vps-* commands
     lib.sh                     #   shared helpers → /usr/local/lib/vps-maintenance/
     vps-health.sh              #   health report → /usr/local/sbin/vps-health

@@ -1,0 +1,43 @@
+# Deployed to /etc/systemd/system/ by scripts/setup/31-agent-loop-receiver.sh
+#
+# GitHub App webhook receiver for the private agent-loop hub
+# (https://github.com/peterekjs/agent-loop, receiver/). Listens on
+# 127.0.0.1:8812 behind Caddy (agent-loop.peterek.net), validates every
+# delivery by HMAC, and forwards label events as repository_dispatch to the
+# hub. Stateless — safe to restart at any time.
+[Unit]
+Description=agent-loop webhook receiver
+Documentation=https://github.com/peterekjs/vps/blob/main/docs/runbooks/agent-loop-receiver.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Runs as a throwaway user; the secrets below are read by systemd as root and
+# handed in — the service user never needs to read /etc/agent-loop-receiver.
+DynamicUser=yes
+EnvironmentFile=/etc/agent-loop-receiver/env
+LoadCredential=app.pem:/etc/agent-loop-receiver/app.pem
+WorkingDirectory=/opt/agent-loop/receiver
+ExecStart=/usr/bin/node /opt/agent-loop/receiver/src/server.js
+Restart=on-failure
+RestartSec=5s
+
+# Hardening — the process only needs outbound HTTPS and a loopback listener.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

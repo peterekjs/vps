@@ -36,6 +36,7 @@ it, write one as part of the change (repo convention, see `CLAUDE.md`).
 | New provider or public IP | [provider-or-ip-migration.md](provider-or-ip-migration.md) |
 | Exposing a new service / adding a WG peer | [add-a-service.md](add-a-service.md) |
 | Plex on the NAS not reachable from outside | [plex-remote-access.md](plex-remote-access.md) |
+| GitHub agent-loop webhooks not arriving / rotating its secrets | [agent-loop-receiver.md](agent-loop-receiver.md) |
 
 ## Runbook skeleton (the convention)
 

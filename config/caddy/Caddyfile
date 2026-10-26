@@ -37,6 +37,14 @@ agent.peterek.net {
 	reverse_proxy http://192.168.40.10:8811
 }
 
+# agent-loop webhook receiver — runs ON this VPS (agent-loop-receiver.service,
+# loopback only). No proxy-level auth: the backend validates every delivery's
+# X-Hub-Signature-256 against the GitHub App webhook secret (ADR 0001 pattern).
+# See docs/runbooks/agent-loop-receiver.md.
+agent-loop.peterek.net {
+	reverse_proxy http://127.0.0.1:8812
+}
+
 # LLM endpoint — Ollama on STUDIO (the Mac Studio), same WireGuard path as the
 # agent endpoint. Ollama has no authentication of its own, so auth happens HERE
 # at the edge: per-client bearer keys, an inference-only path allowlist, and
