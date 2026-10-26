@@ -23,7 +23,8 @@ each delivery's HMAC and forwards matching label events as
    - Webhook URL `https://agent-loop.peterek.net/webhook`; webhook secret:
      leave for step 4.
    - Repository permissions: Contents **write**, Issues **write**, Pull
-     requests **write**, Metadata **read**, Administration **read**.
+     requests **write**, Workflows **write**, Metadata **read**,
+     Administration **read**.
    - Subscribe to events: **Issues**, **Pull request**.
    - Where can it be installed: **Any account**.
    - Generate a private key (downloads `*.pem`). Note the **App ID**.
