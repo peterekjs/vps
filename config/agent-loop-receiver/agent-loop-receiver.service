@@ -32,10 +32,11 @@ PrivateDevices=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
-RestrictAddressFamilies=AF_INET AF_INET6
+# AF_UNIX: glibc name resolution talks to nscd/resolved over a unix socket.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=yes
 LockPersonality=yes
-MemoryDenyWriteExecute=yes
+# No MemoryDenyWriteExecute: V8's JIT needs W+X mappings; with it Node dies at startup.
 SystemCallArchitectures=native
 CapabilityBoundingSet=
 

@@ -182,11 +182,19 @@ if grep -q '^APP_ID=123456$' "${ENV_FILE}"; then
 fi
 
 service_enable_restart "${UNIT_NAME}"
-sleep 1
-if curl -fsS --max-time 5 "${HEALTH_URL}" >/dev/null; then
+healthy=0
+for _ in $(seq 1 10); do
+  if curl -fsS --max-time 2 "${HEALTH_URL}" >/dev/null 2>&1; then
+    healthy=1
+    break
+  fi
+  sleep 1
+done
+if [[ "${healthy}" -eq 1 ]]; then
   log_success "Receiver answers ${HEALTH_URL}"
 else
-  log_error "Receiver not answering on ${HEALTH_URL} — journalctl -u ${UNIT_NAME}"
+  log_error "Receiver not answering on ${HEALTH_URL}. Last journal lines:"
+  journalctl -u "${UNIT_NAME}" -n 20 --no-pager >&2 || true
   exit 1
 fi
 
