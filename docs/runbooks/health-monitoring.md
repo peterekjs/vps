@@ -29,6 +29,7 @@ Exit codes: `0` = all OK, `1` = warnings, `2` = at least one critical finding.
 | Services (`ssh`, `caddy`, `fail2ban`, `wg-quick@*`) | unit not active | — |
 | WireGuard listen port in UFW (each `/etc/wireguard/*.conf`) | UFW active but no allow rule for the interface's `ListenPort/udp` | — |
 | Audit daemon (`auditd`) | unit not active — unless running in a container (LXC/OpenVZ), where it's expected to be skipped | — |
+| agent-loop receiver (`agent-loop-receiver`, active + `GET /health` = `ok` on loopback) | unit not active, or `/health` not answering `ok` within 5 s — both skipped when the unit isn't installed | `LISTEN_PORT` in `/etc/agent-loop-receiver/env` (default 8812) |
 | Root filesystem usage | ≥ `DISK_CRIT_PCT` (warn ≥ `DISK_WARN_PCT`) | `DISK_WARN_PCT`, `DISK_CRIT_PCT` |
 | Available memory | — (warn < `MEM_AVAILABLE_MIN_MB` MB) | `MEM_AVAILABLE_MIN_MB` |
 | 15-min load | — (warn > 2× cores) | — |
@@ -125,4 +126,5 @@ Nothing to roll back — the command only reads. When it reports problems:
 | backup stale or missing | [backup-and-restore.md](backup-and-restore.md) |
 | reboot required | [updates-and-patching.md](updates-and-patching.md) |
 | service not active | `systemctl status <svc>`, then the service's runbook/ADR |
+| agent-loop-receiver down / `/health` failing | [agent-loop-receiver.md](agent-loop-receiver.md) |
 | tune a noisy threshold | edit `/etc/vps-maintenance.conf` (this file's table) |
