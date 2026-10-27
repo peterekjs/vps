@@ -4,7 +4,8 @@
 # Usage:
 #   vps-health [--notify] [--quiet]
 #
-# Checks: core services, wg-quick interfaces + their UFW port, disk/memory/load, TLS cert
+# Checks: core services, wg-quick interfaces + their UFW port,
+# agent-loop-receiver (active + /health, if installed), disk/memory/load, TLS cert
 # expiry for every Caddyfile hostname, WireGuard handshakes for critical
 # peers, notification channel configured, pending updates + reboot-required,
 # fail2ban jails, backup freshness.
@@ -95,6 +96,30 @@ if ufw status 2>/dev/null | grep -q "Status: active"; then
       check_crit "ufw has NO allow rule for ${wg_port}/udp (wg ${c}) — peers cannot handshake; fix: ufw allow ${wg_port}/udp comment 'WireGuard ${c}'"
     fi
   done
+fi
+
+# agent-loop-receiver (31-agent-loop-receiver.sh) is optional per host. GitHub
+# never retries a failed webhook delivery, so a dead receiver silently drops
+# labels until the hub's hourly sweep recovers them — page on it, but only
+# where the unit is actually installed.
+if [[ -n "$(systemctl list-unit-files --no-legend agent-loop-receiver.service 2>/dev/null)" ]]; then
+  if systemctl is-active --quiet agent-loop-receiver; then
+    check_ok "service agent-loop-receiver active"
+  else
+    check_crit "service agent-loop-receiver NOT active"
+  fi
+  # Parse rather than source: the env file also carries the webhook secret.
+  receiver_port=$(sed -n "s/^[[:space:]]*LISTEN_PORT=[\"']\{0,1\}\([0-9]\{1,5\}\).*/\1/p" \
+    /etc/agent-loop-receiver/env 2>/dev/null | tail -1 || true)
+  receiver_url="http://127.0.0.1:${receiver_port:-8812}/health"
+  if [[ "$(curl -fsS --max-time 5 "${receiver_url}" 2>/dev/null || true)" == "ok" ]]; then
+    check_ok "agent-loop-receiver ${receiver_url} answers ok"
+  else
+    check_crit "agent-loop-receiver ${receiver_url} not answering ok"
+  fi
+else
+  check_ok "agent-loop-receiver skipped (not installed)"
+  check_ok "agent-loop-receiver /health skipped (not installed)"
 fi
 
 # --- Notification channel -----------------------------------------------------

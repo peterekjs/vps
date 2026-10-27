@@ -83,6 +83,12 @@ leaves the running service untouched.
 
 ## Verify
 
+`vps-health` checks the unit is active and `/health` answers `ok` on every
+daily run and pages a critical finding otherwise — see
+[health-monitoring.md](health-monitoring.md). GitHub never retries a failed
+delivery; labels applied during an outage are only recovered by the hub's
+hourly sweep, so treat that alert as urgent.
+
 ```bash
 curl -fsS http://127.0.0.1:8812/health                 # ok
 curl -I https://agent-loop.peterek.net/health          # 200 with a LE cert
