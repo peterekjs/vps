@@ -5,9 +5,10 @@
 #   sudo bash scripts/setup/21-caddy.sh [options]
 #
 # Options:
-#   --keep-traefik   Do NOT stop a running Traefik container (default: stop it
-#                    so Caddy can bind ports 80/443). Traefik is only stopped,
-#                    never removed, so it stays available as a rollback.
+#   --keep-traefik   Do NOT park Traefik (default: disable its systemd unit
+#                    and stop its container so Caddy can bind ports 80/443).
+#                    Its compose project and volumes are never removed, so it
+#                    stays available as a rollback.
 #   -h, --help       Show this help message
 #
 # What this script does:
@@ -18,7 +19,9 @@
 #   3. Deploys config/caddy/Caddyfile to /etc/caddy/Caddyfile (with backup)
 #   4. Validates the Caddyfile, restoring the backup on failure
 #   5. Opens 80/tcp + 443/tcp in UFW (required for HTTP-01 + HTTPS)
-#   6. Stops (parks) any running Traefik container to free ports 80/443
+#   6. Parks Traefik to free ports 80/443: disables any systemd unit whose
+#      compose stack runs a Traefik image (so it cannot recreate Traefik on
+#      restart or at boot), then stops any Traefik container still running
 #   7. Enables & (re)starts the caddy service, which issues certs via HTTP-01
 #   8. Deploys the caddy-llm fail2ban filter + jail (skipped if fail2ban is
 #      not installed — run 00-security-hardening.sh first)
@@ -213,9 +216,72 @@ fi
 # ---------------------------------------------------------------------------
 section "5. Park Traefik"
 
+# True if the compose file in directory $1 runs a Traefik image
+# (traefik:v3, docker.io/library/traefik:latest, ...).
+compose_dir_runs_traefik() {
+  local f
+  for f in "$1"/docker-compose.yml "$1"/docker-compose.yaml "$1"/compose.yml "$1"/compose.yaml; do
+    [[ -f "${f}" ]] || continue
+    if grep -qiE "^[[:space:]]*image:[[:space:]]*[\"']?([^/\"'[:space:]]+/)*traefik([:@\"'[:space:]]|$)" "${f}"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Print the systemd service units that bring a Traefik compose stack up
+# (WorkingDirectory holds a compose file running a Traefik image). Such a unit
+# must be disabled before the containers are stopped: a Restart=always
+# `docker compose up` unit would otherwise recreate Traefik within seconds, or
+# on the next boot, and fight Caddy for 80/443.
+find_traefik_units() {
+  local unit dir
+  {
+    systemctl list-units --type=service --all --plain --no-legend 2>/dev/null | awk '{print $1}' || true
+    systemctl list-unit-files --type=service --state=enabled --no-legend 2>/dev/null \
+      | awk '{print $1}' | grep -v '@\.service$' || true
+  } | sort -u | while read -r unit; do
+    dir="$(systemctl show --property=WorkingDirectory --value "${unit}" 2>/dev/null || true)"
+    dir="${dir#[-!]}"
+    [[ -n "${dir}" && -d "${dir}" ]] || continue
+    if compose_dir_runs_traefik "${dir}"; then
+      printf '%s %s\n' "${unit}" "${dir}"
+    fi
+  done
+}
+
 if [[ "${KEEP_TRAEFIK}" -eq 1 ]]; then
   log_info "--keep-traefik given — leaving Traefik untouched (you must free 80/443 yourself)"
 elif command -v docker >/dev/null 2>&1; then
+  # Disable units that would bring Traefik back. Stopping a compose unit runs
+  # its ExecStop (`docker compose down`): containers are removed, but volumes
+  # (ACME certs) and the compose project stay, so the unit is the rollback.
+  mapfile -t traefik_units < <(find_traefik_units)
+  traefik_dirs=()
+  for entry in "${traefik_units[@]}"; do
+    unit="${entry%% *}"
+    traefik_dirs+=("${entry#* }")
+    systemctl disable --now "${unit}" >/dev/null 2>&1 || true
+    log_success "Disabled Traefik unit: ${unit} — 'systemctl enable --now ${unit}' to roll back"
+  done
+
+  # Units without their own WorkingDirectory can still start those stacks,
+  # e.g. a loop over /opt/compose/* — flag them, as disabling them could take
+  # down unrelated stacks too.
+  if [[ ${#traefik_dirs[@]} -gt 0 ]]; then
+    while read -r unit; do
+      exec_start="$(systemctl show --property=ExecStart --value "${unit}" 2>/dev/null || true)"
+      for dir in "${traefik_dirs[@]}"; do
+        # The quoted "/*" matches a literal glob like `for d in /opt/compose/*`.
+        if [[ "${exec_start}" == *"${dir}"* || "${exec_start}" == *"$(dirname "${dir}")/*"* ]]; then
+          log_warn "Unit ${unit} also references ${dir} and may start Traefik again at boot — check it: systemctl cat ${unit}"
+          break
+        fi
+      done
+    done < <(systemctl list-unit-files --type=service --state=enabled --no-legend 2>/dev/null \
+               | awk '{print $1}' | grep -v '@\.service$' || true)
+  fi
+
   # Match running containers whose name or image mentions traefik.
   mapfile -t traefik_containers < <(
     docker ps --format '{{.Names}} {{.Image}}' \
@@ -299,11 +365,15 @@ cat <<EOF
     - DNS: llm.peterek.net must be a grey-cloud (DNS-only) A record pointing
       at this VPS, or HTTP-01 issuance will fail.
 
-  Rollback (during the verification window):
-    systemctl stop caddy && docker start <traefik-container>
+  Rollback (during the verification window) — use the unit or container
+  named in step 5 above:
+    systemctl stop caddy && systemctl enable --now <traefik-unit>
+    systemctl stop caddy && docker start <traefik-container>   # if no unit
 
-  Once both routes verify, remove the parked Traefik for good:
-    docker rm <traefik-container>              # and delete its compose/config
+  Once all routes verify, remove the parked Traefik for good:
+    rm /etc/systemd/system/<traefik-unit> && systemctl daemon-reload
+    docker compose -f <compose-dir>/docker-compose.yml down   # or: docker rm <traefik-container>
+    # then delete its compose dir — it may hold a Cloudflare API token
 
   Plex (see docs/runbooks/plex-remote-access.md): on the NAS set
     Settings → Network → Custom server access URLs = https://plex.peterek.net:443
