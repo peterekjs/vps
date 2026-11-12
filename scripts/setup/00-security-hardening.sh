@@ -162,6 +162,18 @@ if systemctl is-enabled --quiet caddy 2>/dev/null; then
   reopened+=("80/tcp, 443/tcp (Caddy)")
 fi
 
+# UFW re-applies its own /etc/ufw/sysctl.conf (IPT_SYSCTL in /etc/default/ufw)
+# on every start/reload. That runs after systemd-sysctl at boot, and the
+# Debian default ships log_martians=0, so it silently undid the log_martians=1
+# from config/sysctl/hardening.conf on every reboot (caught by vps-audit after
+# the 2026-10-19 reboot). Flip UFW's copy to agree with ours.
+UFW_SYSCTL="/etc/ufw/sysctl.conf"
+if grep -qE '^net/ipv4/conf/(all|default)/log_martians=0' "${UFW_SYSCTL}"; then
+  backup_file "${UFW_SYSCTL}"
+  sed -i -E 's#^(net/ipv4/conf/(all|default)/log_martians)=0#\1=1#' "${UFW_SYSCTL}"
+  log_success "Set log_martians=1 in ${UFW_SYSCTL} (UFW no longer overrides the sysctl hardening)"
+fi
+
 # Enable UFW
 ufw --force enable
 
