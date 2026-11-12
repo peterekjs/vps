@@ -154,7 +154,7 @@ Flag (optional):
 
 | Flag             | Purpose                                                              |
 |------------------|---------------------------------------------------------------------|
-| `--keep-traefik` | Do not stop a running Traefik container (default: park it so Caddy can bind 80/443) |
+| `--keep-traefik` | Do not park Traefik (default: disable its systemd unit and stop its container so Caddy can bind 80/443) |
 
 #### What it does
 
@@ -165,7 +165,7 @@ Flag (optional):
 | Config | Deploys `config/caddy/Caddyfile` to `/etc/caddy/Caddyfile` (with backup) |
 | Validate | Runs `caddy validate`; restores the backup and aborts on failure |
 | Firewall | Opens `80/tcp` + `443/tcp` in UFW (required for HTTP-01 + HTTPS) |
-| Cutover | Stops (parks, does not remove) any running Traefik container to free 80/443 |
+| Cutover | Parks Traefik to free 80/443: disables any systemd unit whose compose stack runs a Traefik image (so it cannot come back on restart or at boot), then stops any Traefik container still running. Compose projects and volumes are kept for rollback |
 | Systemd | Enables & (re)starts `caddy`, which issues certs via HTTP-01 on first request |
 | fail2ban | Deploys the `caddy-llm` filter + jail (bans repeated unauthenticated probes of the LLM endpoint) |
 
@@ -198,7 +198,8 @@ Ollama.app, allow it through the macOS firewall, and prevent sleep.
 Re-running the script is safe: it re-deploys and re-validates the Caddyfile and
 reloads the service. Verify with `journalctl -u caddy -f` and
 `curl -I https://agent.peterek.net`. To roll back during the verification
-window: `systemctl stop caddy && docker start <traefik-container>`.
+window: `systemctl stop caddy && systemctl enable --now <traefik-unit>` (or
+`docker start <traefik-container>` if Traefik had no unit).
 
 > Home Assistant must trust the proxy: add the VPS WireGuard address to
 > `http.trusted_proxies` and set `use_x_forwarded_for: true` in its
